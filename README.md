@@ -146,6 +146,10 @@ var rewloy = new RewloyClient(new RewloyClientOptions
 });
 ```
 
+Kendi kodunuzu sınamak için aynı kapı kullanılır: `HttpClient`e kendi
+`HttpMessageHandler`ınızı verin, ağa çıkmadan sahte yanıtlar döndürün
+(bu deponun testleri böyle yazılmıştır).
+
 ## Kart vermek ve kasada işlem
 
 ```csharp
@@ -487,7 +491,8 @@ var result = await rewloy.PassActionAsync(
   `RequestOptions.Reconnect` is `false`, and ends quietly on cancellation,
   `break` or `Close()`.
 - **One client.** `RewloyClient` is thread-safe: make one and share it. Pass
-  your own `HttpClient` (from `IHttpClientFactory`) and it is not disposed.
+  your own `HttpClient` (from `IHttpClientFactory`, or with a stub
+  `HttpMessageHandler` to test your code) and it is not disposed.
 
 ### Webhooks
 
