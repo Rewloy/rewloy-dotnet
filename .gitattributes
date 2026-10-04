@@ -1,0 +1,7 @@
+# Generated and snapshot files are text with LF endings on every platform:
+# the generation test compares bytes.
+* text=auto eol=lf
+*.sln text eol=crlf
+*.png binary
+openapi/openapi.json -diff linguist-generated
+src/Rewloy/Generated/*.g.cs linguist-generated
