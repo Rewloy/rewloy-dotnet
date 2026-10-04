@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net8.0 for current .NET; netstandard2.0 for what older ERP and POS
+    software runs on: .NET Framework 4.6.2 and later (4.8 above all) and
+    .NET Core 2.x/3.x. Both builds are the same source. The only dependency,
+    on netstandard2.0 alone, is System.Text.Json (net8.0 has it built in).
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <AssemblyName>Rewloy</AssemblyName>
+    <RootNamespace>Rewloy</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Rewloy</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Rewloy</Authors>
+    <Company>Rewloy</Company>
+    <Product>Rewloy</Product>
+    <Description>The official .NET library for the Rewloy API (digital loyalty cards in Apple Wallet, Google Wallet and Rewloy Cüzdan): a typed client generated from the OpenAPI document, with retries, idempotency keys, paging, server-sent events and webhook verification.</Description>
+    <PackageTags>rewloy;loyalty;wallet;api;sdk;openapi;pos;erp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://rewloy.com/gelistiriciler</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Rewloy/rewloy-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright (c) 2026 Rewloy</Copyright>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <InternalsVisibleTo Include="Rewloy.Tests" />
+  </ItemGroup>
+
+</Project>

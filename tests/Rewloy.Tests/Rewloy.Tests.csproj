@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The tests run on net10.0 (the SDK's own runtime) and net8.0. Both load the
+    library's net8.0 build. To run them against the netstandard2.0 build, the
+    one .NET Framework 4.8 programs use, pass -p:RewloyAsset=netstandard2.0:
+    the same source and tests, the other asset.
+    No test touches the network: the API is a stub HttpMessageHandler.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net8.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Rewloy.Tests</RootNamespace>
+    
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <!-- What the NuGet package's dependencies would bring along, for the netstandard2.0 build referenced as a project. -->
+  <ItemGroup Condition="'$(RewloyAsset)' == 'netstandard2.0'">
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Rewloy/Rewloy.csproj" Condition="'$(RewloyAsset)' == ''" />
+    <ProjectReference Include="../../src/Rewloy/Rewloy.csproj" SetTargetFramework="TargetFramework=netstandard2.0" Condition="'$(RewloyAsset)' == 'netstandard2.0'" />
+    <ProjectReference Include="../../tools/Rewloy.Generator/Rewloy.Generator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../../openapi/openapi.json" Link="openapi/openapi.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
