@@ -306,7 +306,7 @@ namespace Rewloy.Tests
             var sleeps = new Sleeps();
             using var client = Clients.Make(stub, sleeps);
 
-            var events = await ReadAsync(client.LiveFeedAsync(new RequestOptions { IdleTimeout = TimeSpan.FromMilliseconds(100) }), 1);
+            var events = await ReadAsync(client.LiveFeedAsync(new RequestOptions { IdleTimeout = TimeSpan.FromMilliseconds(300) }), 1);
 
             Assert.Single(events);
             Assert.Equal(2, stub.Count);

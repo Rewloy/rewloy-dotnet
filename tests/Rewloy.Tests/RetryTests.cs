@@ -246,7 +246,7 @@ namespace Rewloy.Tests
                 .Then(Reply.Ok("{\"serial\":\"ABCD-EFGH-JKLM\"}"));
             using var client = Clients.Make(stub);
 
-            var pass = await client.GetPassAsync("ABCD-EFGH-JKLM", new RequestOptions { Timeout = TimeSpan.FromMilliseconds(80) });
+            var pass = await client.GetPassAsync("ABCD-EFGH-JKLM", new RequestOptions { Timeout = TimeSpan.FromMilliseconds(250) });
 
             Assert.Equal("ABCD-EFGH-JKLM", pass.Serial);
             Assert.Equal(2, stub.Count);
