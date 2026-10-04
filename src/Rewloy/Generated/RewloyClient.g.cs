@@ -57,7 +57,7 @@ namespace Rewloy
 
         /// <summary>Bir kartın durumu</summary>
         /// <remarks>
-        /// <para>Bakiye, ilerleme, ödül hazırlığı ve seviye — müşterinin cüzdanında gördüğüyle aynı.</para>
+        /// <para>Bakiye, ilerleme, ödül hazırlığı ve seviye — müşterinin cüzdanında gördüğüyle aynı. `actions` kartın türünün aldığı kasa işlemlerini ve şimdi yapılıp yapılamayacaklarını, `sale` bir satışın bu kartta ne yazacağını söyler.</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `passes.read` — Kartları görüntüleme.</para>
         /// <para><c>GET /v1/passes/{serial}</c></para>
@@ -86,7 +86,7 @@ namespace Rewloy
 
         /// <summary>Kartın bir şubedeki kasa kuralları</summary>
         /// <remarks>
-        /// <para>Kasada işlem yapmadan önce: kart bu şubede kullanılabilir mi, hangi şubelerde geçerli, şu an burada hangi kasa kampanyası çalışıyor ve kasiyerin göreceği uyarılar (tarayıcıdaki şeritlerin aynısı). `allowed: false` iken işlem `WRONG_LOCATION` ile reddedilir (ADR 139).</para>
+        /// <para>Kasada işlem yapmadan önce: kart bu şubede kullanılabilir mi, hangi şubelerde geçerli, şu an burada hangi kasa kampanyası çalışıyor ve kasiyerin göreceği uyarılar (tarayıcıdaki şeritlerin aynısı). `allowed: false` iken işlem `WRONG_LOCATION` ile reddedilir (ADR 139). Şube kartın işletmesinin silinmemiş bir şubesi olmalıdır, değilse `404 LOCATION_NOT_FOUND` (kasa işlemleri gibi).</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `scan.use` — Tarayıcıyı kullanma.</para>
         /// <para><c>GET /v1/passes/{serial}/till</c></para>
@@ -118,7 +118,7 @@ namespace Rewloy
         /// <summary>Kasada işlem</summary>
         /// <remarks>
         /// <para>
-        /// Karta, bir şubede kasa işlemi uygular. **Idempotency-Key zorunludur**: aynı anahtarla tekrar, bakiyeyi ikinci kez değiştirmez ve ilk sonucu döndürür (`duplicate: true`). Salt-okunur hesapta da çalışır: mevcut kartlar çalışmaya devam eder.
+        /// Karta, bir şubede kasa işlemi uygular. **Idempotency-Key zorunludur** (8–64 karakter, bu kimlik için kalıcı olarak tekil): aynı anahtarla aynı işlemin tekrarı bakiyeyi ikinci kez değiştirmez ve ilk sonucu döndürür (`duplicate: true`); bu kartta başka bir işlem için kullanılmış bir anahtar `422 IDEMPOTENCY_KEY_REUSED` alır. Şube işletmenizin silinmemiş bir şubesi olmalıdır (`404 LOCATION_NOT_FOUND`). Salt-okunur hesapta da çalışır: mevcut kartlar çalışmaya devam eder.
         /// | action | kart | gerekli alan |
         /// |---|---|---|
         /// | `earn-stamps` | damga | `count` (varsayılan 1) |
@@ -162,6 +162,55 @@ namespace Rewloy
         /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
         public Task<RewloyResponse<PassActionData>> PassActionWithResponseAsync(string serial, PassActionBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
             => InvokeAsync<PassActionData>(RewloyOperations.PassAction, new string[] { PathValue(serial) }, null, body, options, cancellationToken);
+
+        /// <summary>Satışı karta yaz</summary>
+        /// <remarks>
+        /// <para>
+        /// Kasada ya da kendi yazılımınızda tamamlanan bir satışı karta yazar: ne yazılacağına kartın türü ve programın kendi kuralı karar verir, entegrasyonun türü bilmesi gerekmez (ADR 177). `amountMinor` ödenen toplamdır, işletmenin para biriminde ve kuruş cinsinden; başka para birimi kabul edilmez ve çevrilmez.
+        /// | kart | satış ne yazar | `applied` |
+        /// |---|---|---|
+        /// | damga | 1 damga (kasa kampanyası katlar) | `stamps` |
+        /// | puan | programın oranıyla, her 1 birim için `earnRate` puan | `points` |
+        /// | VIP | 1 ziyaret, ziyaret penceresinde bir kez | `visit` |
+        /// | cashback | toplamın `cashbackRate` yüzdesi | `cashback` |
+        /// | hediye kartı, kupon, indirim | hiçbir şey (harcamak ve kullanmak `POST /v1/passes/{serial}/actions` ile) | `none` |
+        /// </para>
+        /// <para>
+        /// Hiçbir şey yazılmadıysa yanıt yine 200'dür, `applied: "none"` ve nedeni `reason`: `below_minimum` (tutar bir puan ya da bir kuruş birikim üretmiyor; `amountMinor: 0` dahil), `visit_already_counted` (VIP: bu ziyaret penceresinde ziyaret zaten sayıldı), `card_full` (damga: kart dolu ve program ödülden sonra damga biriktirmiyor; önce ödülü kullanın), `type_does_not_earn`. Damga ve VIP, `amountMinor: 0` olsa da ziyareti sayar.
+        /// - **Idempotency-Key zorunludur**: 8–64 karakter ve bu kimlik için **kalıcı olarak tekil**; defter anahtarları hiç silinmez. Fiş numarası tek başına anahtar olamaz: ÖKC fiş numaraları Z raporundan sonra yeniden başlar. Kasa + Z no + fiş no birleşimi (ör. `kasa3-z0187-fis0042`) ya da satışla birlikte saklanıp tekrarda yeniden gönderilen bir UUID kullanın. Aynı anahtarla tekrar ikinci kez yazmaz: `duplicate: true`, `credited` ilk isteğin yazdığı, `balance` kartın şimdiki bakiyesi. Anahtar `POST /v1/passes/{serial}/actions` ile aynı alandadır: orada bu kartta başka bir işlem için kullanılmış bir anahtar `422 IDEMPOTENCY_KEY_REUSED` alır.
+        /// - **`reference`** (isteğe bağlı, en fazla 80 karakter): fiş numarası buraya yazılır. Defter kaydının notuna yazılır: müşterinin geçmişinde (VIP ziyaretleri hariç; onlar ziyaret olarak görünür) ve işlem dökümünün `Not` sütununda görünür. Müşterinin kişisel bilgisini yazmayın.
+        /// - Şube kuralları ve kasa kampanyaları `actions` ile aynıdır: kart bu şubede geçerli değilse `409 WRONG_LOCATION`, kampanya `promotion` ile döner. Salt-okunur hesapta da çalışır.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `scan.use` — Tarayıcıyı kullanma.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/passes/{serial}/sale</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-recordSale">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<RecordSaleData> RecordSaleAsync(string serial, RecordSaleBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await RecordSaleWithResponseAsync(serial, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Satışı karta yaz (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/passes/{serial}/sale</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-recordSale">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<RecordSaleData>> RecordSaleWithResponseAsync(string serial, RecordSaleBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<RecordSaleData>(RewloyOperations.RecordSale, new string[] { PathValue(serial) }, null, body, options, cancellationToken);
 
         // ------------------------------------------------------------ Katılım
 
@@ -313,6 +362,32 @@ namespace Rewloy
 
         // ------------------------------------------------------------ Belge
 
+        /// <summary>Sürüm</summary>
+        /// <remarks>
+        /// <para>Bu kurulumda çalışan Rewloy sürümü (`version`, anlamsal sürüm: `1.0.0`, bir aday için `1.0.0-rc.1`) ve API sürümü (`apiVersion`, şimdilik hep `v1`). Kimlik istemez; kimlikle de çağrılabilir. API'nin yolu (`/v1`) ürünün sürümünden bağımsızdır: ürün 1.x, 2.x olurken `/v1` ancak geriye uymayan bir API değişikliğiyle `/v2` olur. Aynı sürüm her yanıtın `Rewloy-Version` başlığındadır.</para>
+        /// <para>**Kimlik:** kimlik gerekmez, API anahtarı, ekip oturumu, kart sahibi oturumu.</para>
+        /// <para><c>GET /v1/meta</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-getMeta">API referansı</see></para>
+        /// </remarks>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<GetMetaData> GetMetaAsync(RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await GetMetaWithResponseAsync(options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Sürüm (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>GET /v1/meta</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-getMeta">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<GetMetaData>> GetMetaWithResponseAsync(RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<GetMetaData>(RewloyOperations.GetMeta, Array.Empty<string>(), null, null, options, cancellationToken);
+
         /// <summary>OpenAPI 3.1 belgesi</summary>
         /// <remarks>
         /// <para>Bu API'nin makine tarafından okunabilir tanımı (Swagger / OpenAPI 3.1). Swagger Editor, Postman ya da Insomnia'ya içe aktarılabilir; istemci kodu üretmek için kullanılabilir. Tanımlar koddaki uç nokta bildirimlerinden üretilir, elle yazılmaz.</para>
@@ -425,7 +500,7 @@ namespace Rewloy
 
         /// <summary>Kim olarak bağlıyım?</summary>
         /// <remarks>
-        /// <para>Ekip oturumu: kişi, iki adımlı doğrulama durumu ve koltuk taşıdığı işletmeler (her biri için yetkiler). API anahtarı: anahtarın kendisi, işletmesi, rolü, kapsamı, etkin yetkileri (`permissions`) ve bir mağaza eklentisinin anahtarıysa bağlantısı (`key.shopId`). Bir entegrasyonun ilk çağrısı olarak bağlantıyı doğrulamak için idealdir. `mode`: çağıranın test ortamında mı (`test`) gerçek işletmede mi (`live`) çalıştığı; ekip oturumu bir işletme seçmediyse `null`.</para>
+        /// <para>Ekip oturumu: kişi, iki adımlı doğrulama durumu ve koltuk taşıdığı işletmeler (her biri için yetkiler). API anahtarı: anahtarın kendisi, işletmesi, rolü, kapsamı, etkin yetkileri (`permissions`), bir mağaza eklentisinin anahtarıysa bağlantısı (`key.shopId`) ve bir eklentinin açıp kapatabileceği yetenekler (`key.abilities`: `view` kartları, durumlarını, programın sayılarını ve son işlemleri görmek; `till` tek bir şubenin kasası, `key.tillLocationId`). Bir entegrasyonun ilk çağrısı olarak bağlantıyı doğrulamak için idealdir. `mode`: çağıranın test ortamında mı (`test`) gerçek işletmede mi (`live`) çalıştığı; ekip oturumu bir işletme seçmediyse `null`.</para>
         /// <para>**Kimlik:** ekip oturumu, API anahtarı.</para>
         /// <para><c>GET /v1/me</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-me">API referansı</see></para>
@@ -461,11 +536,13 @@ namespace Rewloy
         /// - `phone`: telefonla giriş açık değilse `501 NOT_ENABLED`; Türkiye cep telefonu değilse `400 INVALID_PHONE`. `channel` (`whatsapp` ya da `sms`) verilmezse şu an açık olan ilk yol kullanılır (önce WhatsApp); istenen yol açık değilse `501 NOT_ENABLED`, bugünkü bütçesi dolduysa `503 PHONE_BUSY` — ikisinde de `details.channels` şu an açık olanlar (boşsa e-postayla girin). Yanıttaki `channel` kodun gittiği yoldur: WhatsApp kodu kendiliğinden dolmaz, kişiye "Kodu kopyala" ile yapıştırmasını söyleyin.
         /// - `previousToken`: bu kurulumun daha önceki `rwh_` oturumu (süresi dolmuş olsa da). Adres ya da numara o hesabınsa adres ve numara başına sınırlar uygulanmaz, böylece başkaları sizin kodlarınızı tüketemez. Çıkış yapılmış ya da kaldırılmış bir oturum bir şey kanıtlamaz.
         /// - `deviceName`: açılacak oturumun Cihazlarım'daki adı.
+        /// - **Idempotency-Key** (isteğe bağlı, önerilir; 8–64 karakter, her yeni istek için yeni bir UUID): aynı anahtar ve aynı gövdeyle tekrar yeni kod GÖNDERMEZ, ilk yanıtı (aynı `request`) `Idempotent-Replayed: true` ile döndürür ve sınırlardan düşmez — bağlantısı kopan uygulama güvenle yineler. Aynı anahtar başka bir gövdeyle `422 IDEMPOTENCY_KEY_REUSED`; ilk istek sürerken `409 IDEMPOTENCY_IN_PROGRESS` (bir şey gönderilmez). Yanıt şifreli saklanır, 7 gün tekrar edilir; kodun kendisi 15 dakika geçerlidir, yeni kod için yeni anahtar gönderin. Oturumsuz çağrıda anahtar istemcinin IP adresine bağlıdır. Başlık yoksa her çağrı yeni bir kod ve yeni bir `request` demektir.
         /// - **Sözleşme değişikliği (ADR 150):** `request` yeni. E-postadaki bağlantı artık oturumu tek başına açmaz; bağlantıyı uygulamanız yakalarsa `linkToken` olarak yine aynı `request` ile gönderin.
         /// </para>
         /// <para>**Kimlik:** kimlik gerekmez.</para>
         /// <para><c>POST /v1/holder/login</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderLogin">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -480,6 +557,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/login</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderLogin">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
@@ -845,7 +923,7 @@ namespace Rewloy
 
         /// <summary>Davet</summary>
         /// <remarks>
-        /// <para>Davet e-postasındaki bağlantının son parçası (`/davet/&lt;code&gt;`): hangi işletme, hangi adres, o adresin hesabı var mı (varsa mevcut şifreyle kabul edilir).</para>
+        /// <para>Davet e-postasındaki bağlantının son parçası (`/davet/&lt;code&gt;`): hangi işletme, hangi adres. Adresin Rewloy hesabı olup olmadığını söylemez (bağlantı daveti yapanda da vardır, ADR 181): hesabı olan kişi o hesapla giriş yapıp oturumuyla kabul eder, olmayan şifre belirleyerek.</para>
         /// <para>**Kimlik:** kimlik gerekmez.</para>
         /// <para><c>GET /v1/auth/invites/{code}</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-invitePreview">API referansı</see></para>
@@ -873,16 +951,22 @@ namespace Rewloy
 
         /// <summary>Daveti kabul et</summary>
         /// <remarks>
-        /// <para>Hesap yoksa bu şifreyle açılır (en az 10 karakter); varsa mevcut şifre istenir. Koltuk ve roller verilir — daveti yapanın o anki yetkileriyle yeniden denetlenerek — ve oturum döner. Daveti yapan işletme sahiplerine bildirilir.</para>
-        /// <para>**Kimlik:** kimlik gerekmez.</para>
+        /// <para>
+        /// Koltuk ve roller verilir — daveti yapanın o anki yetkileriyle yeniden denetlenerek — ve oturum döner. Daveti yapan işletme sahiplerine bildirilir. **Davet hiçbir zaman mevcut bir hesabın şifresini sormaz** (bağlantı daveti yapanda da vardır; ADR 181):
+        /// - **Adresin hesabı varsa:** kişi o hesapla girer (`POST /v1/auth/login`) ve bu çağrıyı kendi `rws_` oturumuyla, gövdesiz yapar; yanıt aynı oturumu güncel işletmeleriyle döndürür. Başka bir adresin oturumu `403 INVITE_OTHER_ACCOUNT`. Oturumsuz çağrı, şifreyle de olsa, `409 INVITE_SIGN_IN`.
+        /// - **Hesabı yoksa:** oturumsuz, `password` (en az 10 karakter) ile hesap açılır ve yeni oturum döner. Adres davetle doğrulanmış sayılmaz: doğrulama bağlantısı e-postayla gider (kayıttaki gibi).
+        /// - IP başına 15 dakikada 20 deneme.
+        /// </para>
+        /// <para>**Kimlik:** kimlik gerekmez, ekip oturumu.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
         /// <para><c>POST /v1/auth/invites/{code}/accept</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-acceptInvite">API referansı</see></para>
         /// </remarks>
         /// <param name="code">The `code` of the path.</param>
-        /// <param name="body">The JSON body.</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
         /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
-        public async Task<AcceptInviteData> AcceptInviteAsync(string code, AcceptInviteBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<AcceptInviteData> AcceptInviteAsync(string code, AcceptInviteBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
         {
             var response = await AcceptInviteWithResponseAsync(code, body, options, cancellationToken).ConfigureAwait(false);
             return response.Data;
@@ -895,10 +979,10 @@ namespace Rewloy
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="code">The `code` of the path.</param>
-        /// <param name="body">The JSON body.</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
         /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
-        public Task<RewloyResponse<AcceptInviteData>> AcceptInviteWithResponseAsync(string code, AcceptInviteBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        public Task<RewloyResponse<AcceptInviteData>> AcceptInviteWithResponseAsync(string code, AcceptInviteBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
             => InvokeAsync<AcceptInviteData>(RewloyOperations.AcceptInvite, new string[] { PathValue(code) }, null, body, options, cancellationToken);
 
         // ------------------------------------------------------------ Hesabım
@@ -2205,7 +2289,7 @@ namespace Rewloy
         /// | tür | alanlar |
         /// |---|---|
         /// | hediye kartı | `valueMinor` zorunlu (100 – 100.000.000 kuruş); kullanım her zaman sınırsız, bakiye bitene kadar |
-        /// | kupon | ya `offerText` (ör. "1 tatlı") ya `valueMinor` (100 – 10.000.000 kuruş indirim); `usage` |
+        /// | kupon | ya `offerText` (ör. "1 tatlı") ya `valueMinor` (100 – 10.000.000 kuruş indirim); `usage`; isteğe bağlı `onlineValue` (online mağazadaki değeri: `{ kind: amount, value: kuruş }` ya da `{ kind: percent, value: 1–100 }`, ADR 179) |
         /// | indirim kartı | `percent` (yoksa programın oranı); `usage` |
         /// </para>
         /// <para>`usage`: `once` tek kullanım, `limited` + `usageLimit` (2–1000), `unlimited`. `validUntil` bir gün (YYYY-AA-GG) ise o günün sonuna kadar (Türkiye saati) geçerlidir. Başka türün alanı reddedilir. Planda `instruments` özelliği gerekir.</para>
@@ -3392,7 +3476,7 @@ namespace Rewloy
 
         /// <summary>Ana sayfa</summary>
         /// <remarks>
-        /// <para>Dört ana sayı (yeni kart, yeni müşteri, ziyaret, ödül) ve bir önceki eşit dönem, arkalarındaki günlük seri (önce önceki dönem, sonra bu dönem), tezgâhtaki son 15 olay ve — kapsam bütün şubelerse ve 2+ şube varsa — şubeler yan yana. Kişi adları yalnız `customers.read` olan kimliğe gelir.</para>
+        /// <para>Dört ana sayı (yeni kart, yeni müşteri, ziyaret, ödül) ve bir önceki eşit dönem, arkalarındaki günlük seri (önce önceki dönem, sonra bu dönem), tezgâhtaki son 15 olay ve — kapsam bütün şubelerse ve 2+ şube varsa — şubeler yan yana. Kişi adları yalnız `customers.read` olan kimliğe gelir. Kapsamı programlarla sınırlı bir kimlik bütün işletmenin özetini okuyamaz (`403 OUT_OF_SCOPE`); `GET /v1/analytics` ve `GET /v1/activity`yi programıyla kullanır.</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `analytics.read` — Analitik görüntüleme.</para>
         /// <para><c>GET /v1/home</c></para>
@@ -3421,7 +3505,7 @@ namespace Rewloy
 
         /// <summary>Analitik</summary>
         /// <remarks>
-        /// <para>Son 7, 30 ya da 90 günün göstergeleri: açık kartlar, yeni kartlar, ziyaretler, ziyaret eden kişiler ve bunlardan dönen (2+ ziyaret), ödüller; günlük ziyaretler; haftalık yeni ve dönen ziyaretçiler; program başına kart → kullanım → ödül hunisi; şubeler; en sık gelen müşteriler (yalnız `customers.read` ile). Apple Cüzdan'daki kartlar ve konum hatırlatması taşıyanlar.</para>
+        /// <para>Son 7, 30 ya da 90 günün göstergeleri: açık kartlar, yeni kartlar, ziyaretler, ziyaret eden kişiler ve bunlardan dönen (2+ ziyaret), ödüller; günlük ziyaretler; haftalık yeni ve dönen ziyaretçiler; program başına kart → kullanım → ödül hunisi; şubeler; en sık gelen müşteriler (yalnız `customers.read` ile). Apple Cüzdan'daki kartlar ve konum hatırlatması taşıyanlar. `programId` ile tek bir programın sayıları (ADR 178); kapsamı programlarla sınırlı bir kimlik yalnız kendi programlarını görür. Bir mağaza eklentisinin anahtarına müşteri adı gelmez.</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `analytics.read` — Analitik görüntüleme.</para>
         /// <para><c>GET /v1/analytics</c></para>
@@ -3450,7 +3534,7 @@ namespace Rewloy
 
         /// <summary>İşlem kaydı: kasa</summary>
         /// <remarks>
-        /// <para>Kartlarda yapılan her işlem, yeniden eskiye: damga, puan, ödül, harcama, yükleme, ziyaret, kupon kullanımı… kim (ekip üyesi, API anahtarı ya da sistem), nerede, hangi kart. `day` işletmenin takvim günüdür. Planda `auditlog` özelliği gerekir. `limit` en fazla 100.</para>
+        /// <para>Kartlarda yapılan her işlem, yeniden eskiye: damga, puan, ödül, harcama, yükleme, ziyaret, kupon kullanımı… kim (ekip üyesi, API anahtarı ya da sistem), nerede, hangi kart. `day` işletmenin takvim günüdür. Planda `auditlog` özelliği gerekir. `limit` en fazla 100. Kapsamı programlarla sınırlı bir kimlik (ör. mağaza eklentisinin anahtarı) yalnız kendi programlarının kartlarını görür (ADR 178). Bir mağaza eklentisinin anahtarına kişisel veri gelmez: ekip üyesi `actor` yerine "ekip üyesi" yazar, `personId` null'dır.</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `analytics.read` — Analitik görüntüleme.</para>
         /// <para><c>GET /v1/activity</c></para>
@@ -3528,7 +3612,7 @@ namespace Rewloy
 
         /// <summary>Canlı akış (SSE)</summary>
         /// <remarks>
-        /// <para>Tezgâhta olan her şey, olduğu anda: `event: event` satırlarında `{ at, kind, location, program, delta, unit, name, currency }` (JSON). Kapsamınızdaki şubeler; kişi adı yalnız `customers.read` ile. 25 saniyede bir `: hb` satırı bağlantıyı canlı tutar; koparsa yeniden bağlanın. Tarayıcıdaki `EventSource` başlık gönderemediği için `fetch` ile akış okuyun. IP başına en fazla 12 açık bağlantı. Sunucudan sunucuya bildirim için webhook'ları kullanın.</para>
+        /// <para>Tezgâhta olan her şey, olduğu anda: `event: event` satırlarında `{ at, kind, location, program, delta, unit, name, currency }` (JSON). Kapsamınızdaki şubeler; kişi adı yalnız `customers.read` ile. 25 saniyede bir `: hb` satırı bağlantıyı canlı tutar; koparsa yeniden bağlanın. Tarayıcıdaki `EventSource` başlık gönderemediği için `fetch` ile akış okuyun. IP başına en fazla 12 açık bağlantı. Sunucudan sunucuya bildirim için webhook'ları kullanın. Kapsamı programlarla sınırlı bir kimlik akışı açamaz (`403 OUT_OF_SCOPE`); `GET /v1/activity`yi programıyla sorar.</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `analytics.read` — Analitik görüntüleme.</para>
         /// <para><c>GET /v1/live</c></para>
@@ -4340,6 +4424,10 @@ namespace Rewloy
         /// - Kod **yalnız bu yanıtta** görünür; Rewloy yalnız özetini saklar. 15 dakika geçerlidir.
         /// - Kodu bir kişi alır (ekip oturumu; bir anahtar anahtar üretemez), `apikeys.manage`, kartın programında mağaza bağlantısı yetkisi ve — elle anahtar oluştururken olduğu gibi — `team.manage` ile (anahtarın yetkisi o kişiden verilen bir roldür; kişi E-ticaret rolünün yetkilerini tüm şubelerde taşımalıdır), `api` ve `ecommerce` özellikli bir planda. Kod bir API anahtarı ürettiği için kişinin şifresi yeniden istenir (`password`), anahtar oluştururken olduğu gibi. Bağlantı ve anahtar, kod kullanıldığı anda bu kişinin yetkileriyle kurulur: kişi o arada yetkisini kaybettiyse hiçbir şey kurulmaz.
         /// - Kural alanları `POST /v1/shops` ile aynıdır. En fazla 5 bağlantı ve aynı anda en fazla 5 bekleyen kod.
+        /// - **Eklentinin yetkileri** (ADR 178), kodu alan kişi seçer; sonra bağlantının sayfasından ya da `PUT /v1/shops/{id}/plugin-abilities` ile değişir:
+        ///   - `view` (Görüntüleme; bu çağrıda gönderilmezse kapalı, panelin formunda işaretli gelir): bağlantının programında `passes.read` ve `analytics.read` — kartın durumu (`GET /v1/passes/{serial}`), programın sayıları (`GET /v1/analytics?programId=`) ve kartlardaki son işlemler (`GET /v1/activity`). Müşterinin adı, e-postası ya da telefonu gelmez; ekip üyesinin e-postası da.
+        ///   - `tillLocationId` (Kasa, varsayılan kapalı): bu tek şubede ve bağlantının programında `scan.use` — `GET /v1/passes/{serial}/till`, `POST …/sale`, `POST …/actions`. Hediye kartı yüklemek (`load`) yine `instruments.issue` ister ve verilmez. Kapalı başlar: açıkken WooCommerce'i yönetebilen herkes o şubede müşterilerin bakiyesini harcatabilir.
+        ///   - Kişi bu yetkileri verebilmelidir (`team.manage` ve alt küme kuralı: Görüntüleme yetkilerini tüm şubelerde, `scan.use`'u o şubede taşımalı).
         /// </para>
         /// <para>**Kimlik:** ekip oturumu.</para>
         /// <para>**Yetki:** `apikeys.manage` — API anahtarı yönetimi.</para>
@@ -4398,7 +4486,7 @@ namespace Rewloy
         /// <para>
         /// Mağaza eklentisinin tek adımı: paneldeki bağlantı kodunu (`rwc_…`) verir, karşılığında **bir kez** şunları alır: bağlantı (`shop`), bağlantının sırrı (`secret`, WooCommerce webhook'una yazılır) ve yalnız bu bağlantıya bağlı API anahtarı (`apiKey.token`). Kimlik istemez; kod kimliktir.
         /// - Kod **tek kullanımlıktır**: ikinci kez, süresi dolmuşken ya da iptal edilmişken aynı yanıtı alır: `404 CONNECT_TOKEN_INVALID` (hangisi olduğu söylenmez). Kurulum yarıda reddedilirse (ör. 5 bağlantı sınırı) kod harcanmaz.
-        /// - Anahtar "E-ticaret" rolündedir ve bağlantının programıyla sınırlıdır: kartları ve ayarları görür, yalnız kendi bağlantısını görür ve yönetir, o programdan kart verir. Bağlantı silinince anahtar da iptal edilir. Test ortamının kodu `rwk_test_` anahtarı verir (`mode`).
+        /// - Anahtar "E-ticaret" rolündedir ve bağlantının programıyla sınırlıdır: kartları ve ayarları görür, yalnız kendi bağlantısını görür ve yönetir, o programdan kart verir. Kodu alan kişi Görüntüleme ve Kasa'yı seçtiyse anahtar onları da alır (`apiKey.abilities`, ADR 178); `GET /v1/me` her an yeniden söyler. Bağlantı silinince anahtar da iptal edilir. Test ortamının kodu `rwk_test_` anahtarı verir (`mode`).
         /// - `shopName` anahtarın panelde görünen adına eklenir ("WooCommerce · …"). IP başına 10 dakikada 20 istek.
         /// </para>
         /// <para>**Kimlik:** kimlik gerekmez.</para>
@@ -4425,6 +4513,544 @@ namespace Rewloy
         /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
         public Task<RewloyResponse<ConnectShopData>> ConnectShopWithResponseAsync(ConnectShopBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
             => InvokeAsync<ConnectShopData>(RewloyOperations.ConnectShop, Array.Empty<string>(), null, body, options, cancellationToken);
+
+        /// <summary>Eklentinin yetkilerini değiştir</summary>
+        /// <remarks>
+        /// <para>
+        /// Bağlantı koduyla kurulmuş bir bağlantının eklenti anahtarının bağlantı dışında yapabildikleri (ADR 178): Görüntüleme (`view`) ve tek bir şubenin Kasası (`tillLocationId`; null = kapalı). Değişiklik mevcut anahtara **hemen** uygulanır; eklentinin yeniden bağlanması gerekmez, eklenti `GET /v1/me` ile okur.
+        /// - Yalnız ekip oturumuyla: bir anahtarın yetkisini değiştirmek, anahtar oluşturmak gibidir. Bağlantının programında `shops.manage` (ya da `apikeys.manage`), ayrıca `apikeys.manage`, `team.manage` ve alt küme kuralı (verilen yetkileri kişi o şubelerde taşımalı) ister; kişinin şifresi (`password`) ve değişikliğin nedeni (`reason`, en fazla 200 karakter, yalnız ekibin gördüğü işlem kaydına yazılır) istenir.
+        /// - Bağlantıyı eklenti kurmadıysa ya da eklentinin anahtarı iptal edildiyse `409 NO_PLUGIN_KEY`.
+        /// - **Eklentinin yetkileri** (ADR 178), kodu alan kişi seçer; sonra bağlantının sayfasından ya da `PUT /v1/shops/{id}/plugin-abilities` ile değişir:
+        ///   - `view` (Görüntüleme; bu çağrıda gönderilmezse kapalı, panelin formunda işaretli gelir): bağlantının programında `passes.read` ve `analytics.read` — kartın durumu (`GET /v1/passes/{serial}`), programın sayıları (`GET /v1/analytics?programId=`) ve kartlardaki son işlemler (`GET /v1/activity`). Müşterinin adı, e-postası ya da telefonu gelmez; ekip üyesinin e-postası da.
+        ///   - `tillLocationId` (Kasa, varsayılan kapalı): bu tek şubede ve bağlantının programında `scan.use` — `GET /v1/passes/{serial}/till`, `POST …/sale`, `POST …/actions`. Hediye kartı yüklemek (`load`) yine `instruments.issue` ister ve verilmez. Kapalı başlar: açıkken WooCommerce'i yönetebilen herkes o şubede müşterilerin bakiyesini harcatabilir.
+        ///   - Kişi bu yetkileri verebilmelidir (`team.manage` ve alt küme kuralı: Görüntüleme yetkilerini tüm şubelerde, `scan.use`'u o şubede taşımalı).
+        /// </para>
+        /// <para>**Kimlik:** ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.manage` — Mağaza bağlantısı yönetimi.</para>
+        /// <para><c>PUT /v1/shops/{id}/plugin-abilities</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopPluginAbilities">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<SetShopPluginAbilitiesData> SetShopPluginAbilitiesAsync(Guid id, SetShopPluginAbilitiesBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await SetShopPluginAbilitiesWithResponseAsync(id, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Eklentinin yetkilerini değiştir (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>PUT /v1/shops/{id}/plugin-abilities</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopPluginAbilities">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<SetShopPluginAbilitiesData>> SetShopPluginAbilitiesWithResponseAsync(Guid id, SetShopPluginAbilitiesBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<SetShopPluginAbilitiesData>(RewloyOperations.SetShopPluginAbilities, new string[] { PathValue(id) }, null, body, options, cancellationToken);
+
+        /// <summary>Ödeme adımındaki kodu sor</summary>
+        /// <remarks>
+        /// <para>
+        /// Müşterinin kupon alanına yazdığı Rewloy kodunun bu mağazada ne verdiğini söyler; değer ayırmaz. Kodun ilk sorulması onu bu bağlantıya bağlar (başka bir mağazada `CODE_USED`). Kod oluşturulduktan sonra 15 dakika içinde ilk kez sorulmalı, 45 dakika içinde bir siparişe bağlanmalıdır.
+        /// - `balance` (hediye kartı, cashback): `maxMinor` en fazla ayrılabilecek tutardır — müşterinin seçtiği tutar ve kartın kullanılabilir bakiyesinden küçüğü. `percent`: indirim yüzdesi. `amount`: kuponun online tutarı. `link` (damga, puan, VIP): değer yok, sipariş bu karta işlenir.
+        /// - `tax`: bağlantının ayarına göre değerin uygulanışı: `discount` vergiden önce kupon olarak, `payment` vergiden sonra ödeme gibi (eksi ücret). `link` için null.
+        /// - Bilinmeyen, iptal edilmiş ve başka işletmenin kodu aynı `404 CODE_INVALID` yanıtını alır.
+        /// - Sınırlar: bağlantı başına 10 dakikada 600 soru; bağlantı başına saatte 30 geçersiz koddan sonra geçersiz kodlar o saatin sonuna kadar `429 RATE_LIMITED` (geçerli bir kod yine çalışır). `shopper` gönderilirse aynı alışverişçiye ayrıca 10 dakikada 30 soru ve saatte 10 geçersiz kod: bir alışverişçinin denemeleri ötekilerin bütçesini bitirmez.
+        /// - `orderId` (isteğe bağlı): kodu soran siparişin numarası. Kod bu siparişte zaten kullanılıyorsa `CODE_USED` yerine 200 döner: değerler siparişin gözünden (kendi ayırması kullanılabilir sayılır) ve `redemption` bu siparişin kod kullanımı (`listOrderRedemptions` ile aynı). Kullanım ayırmayı geçtiyse (düşüldü, iade edildi, karşılıksız) değerler kullanımın kaydından gelir. `orderId` gönderilince `redemption` her zaman vardır: kod bu siparişin değilse `null`. Süresi dolmuş ya da işletmenin elle bıraktığı bir ayırma `409 CODE_RELEASED`.
+        /// - `shopper` (isteğe bağlı): alışverişçiyi kişisel veri taşımadan ayıran bir değer — ör. WooCommerce oturum anahtarının ya da müşteri numarasının bir sırla HMAC'i, base64url ya da hex, 8–64 karakter (`^[A-Za-z0-9_-]{8,64}$`). Rewloy saklamaz, yalnız sayaç anahtarında kullanır; e-posta ya da adın kendisini göndermeyin.
+        /// - Kartın programında `shops.redeem` ister ("E-ticaret" rolünde kendi programı için vardır; işletmenin diğer programları için "E-ticaret · harcama"). Bağlantı koduyla kurulmuş bir eklentinin anahtarı yalnız kendi bağlantısında çağırabilir.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.redeem` — Online ödemede kart kodu kullanımı.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/shops/{id}/checkout-codes/quote</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-quoteCheckoutCode">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<QuoteCheckoutCodeData> QuoteCheckoutCodeAsync(Guid id, QuoteCheckoutCodeBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await QuoteCheckoutCodeWithResponseAsync(id, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Ödeme adımındaki kodu sor (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/checkout-codes/quote</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-quoteCheckoutCode">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<QuoteCheckoutCodeData>> QuoteCheckoutCodeWithResponseAsync(Guid id, QuoteCheckoutCodeBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<QuoteCheckoutCodeData>(RewloyOperations.QuoteCheckoutCode, new string[] { PathValue(id) }, null, body, options, cancellationToken);
+
+        /// <summary>Siparişin kod kullanımları</summary>
+        /// <remarks>
+        /// <para>Bir siparişin Rewloy kodlarının şimdiki hâli, ilk kullanılan önce. `shops.read` ister.</para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.read` — Mağaza bağlantılarını görüntüleme.</para>
+        /// <para><c>GET /v1/shops/{id}/orders/{orderId}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-listOrderRedemptions">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<IReadOnlyList<ListOrderRedemptionsItem>> ListOrderRedemptionsAsync(Guid id, string orderId, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await ListOrderRedemptionsWithResponseAsync(id, orderId, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Siparişin kod kullanımları (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>GET /v1/shops/{id}/orders/{orderId}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-listOrderRedemptions">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<IReadOnlyList<ListOrderRedemptionsItem>>> ListOrderRedemptionsWithResponseAsync(Guid id, string orderId, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<IReadOnlyList<ListOrderRedemptionsItem>>(RewloyOperations.ListOrderRedemptions, new string[] { PathValue(id), PathValue(orderId) }, null, null, options, cancellationToken);
+
+        /// <summary>Siparişe kodu bağla ve değeri ayır</summary>
+        /// <remarks>
+        /// <para>
+        /// Sipariş verildiğinde, ödeme alınmadan önce: kodu bu siparişe bağlar ve kartın değerini ayırır (`held`). Ayrılan tutar kartın kullanılabilir bakiyesinden hemen düşer — kasada, POS satışında ve cüzdanda da. Ödenince `capture`, iptal ya da başarısızlıkta `release`; ödenmezse bağlantının bekletme süresi (`settings.holdDays`, varsayılan 7 gün) sonunda karta kendiliğinden döner.
+        /// - `amountMinor`: `balance` kartta zorunlu — siparişe gerçekten uygulanan tutar (en fazla `quote` yanıtındaki `maxMinor`); kuponda ve indirim kartında bilgi için uygulanan indirim; `link` kartta yok sayılır.
+        /// - `orderTotalMinor` (isteğe bağlı, önerilir): siparişin indirimden önceki toplamı, kuruş. Verilirse `amountMinor` onu aşamaz (`400 VALIDATION`): yüzde kodunda bile indirim siparişten büyük kaydedilmez.
+        /// - Aynı sipariş ve aynı kodla tekrar: değişmeden döner (200). Ayrılmışken başka bir tutar: yeniden ayrılır (`generation` artar), `heldUntil` değişmez. Mağazanın ya da siparişin bıraktığı (`release`) bir ayırmayı aynı sipariş yalnız kodun 45 dakikası (`attachBy`) içinde yeniden ayırabilir; süresi dolmuş (`expired`) ya da işletmenin elle bıraktığı bir ayırma bir daha ayrılmaz (`409 CODE_RELEASED`, `details.reason`: `expired` ya da `merchant`; müşteri yeni kod oluşturur — "başka bir siparişte kullanıldı" denmesin). Başka bir sipariş: `CODE_USED`. Bir siparişte en fazla 3 kod, her karttan bir.
+        /// - Ret olursa ödeme alınmamalıdır. Yanıt alınamazsa aynı çağrı güvenle yinelenir; yine alınamazsa siparişi reddedin ve `release` çağırın (ayırma yoksa da zararsızdır).
+        /// - Kartın programında `shops.redeem` ister ("E-ticaret" rolünde kendi programı için vardır; işletmenin diğer programları için "E-ticaret · harcama"). Bağlantı koduyla kurulmuş bir eklentinin anahtarı yalnız kendi bağlantısında çağırabilir.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.redeem` — Online ödemede kart kodu kullanımı.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holdCheckoutCode">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<HoldCheckoutCodeData> HoldCheckoutCodeAsync(Guid id, string orderId, HoldCheckoutCodeBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await HoldCheckoutCodeWithResponseAsync(id, orderId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Siparişe kodu bağla ve değeri ayır (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holdCheckoutCode">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<HoldCheckoutCodeData>> HoldCheckoutCodeWithResponseAsync(Guid id, string orderId, HoldCheckoutCodeBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<HoldCheckoutCodeData>(RewloyOperations.HoldCheckoutCode, new string[] { PathValue(id), PathValue(orderId) }, null, body, options, cancellationToken);
+
+        /// <summary>Ödenen siparişin ayırmasını düş</summary>
+        /// <remarks>
+        /// <para>
+        /// Sipariş ödendiğinde (`processing` ya da `completed`): siparişin ayrılmış her kod kullanımı düşülür — bakiyeli kartta ayırma bırakılır ve tutar harcanır (`captured`), kupon ve indirim kartında kullanım sayılır. Hepsi tek işlemde; tekrar çağrı yapılacak bir şey bulamaz ve aynı sonucu döndürür. Mağazanın imzalı sipariş bildirimi de aynı işi yapar: hangisi önce gelirse o yapar.
+        /// - `captures`: bir kullanımda ayrılandan azını düşmek için (`amountMinor`, en az 1); kalanı karta döner. Verilmezse ayrılanın tamamı.
+        /// - Süresi dolmuş ya da bırakılmış bir ayırma için ödeme gelirse kartta değer hâlâ varsa düşülür (`late: true`); yoksa hiçbir şey düşülmez, kullanım `unbacked` olur ve yanıt `409 HOLD_UNBACKED` (`details.redemptions` son hâl) — bakiye hiçbir zaman eksiye düşmez.
+        /// - Kart bu arada kapatıldıysa `409 PASS_INACTIVE`: ayırma süresi dolana dek durur. Süresi dolmuş ya da bırakılmış bir ayırmanın kartı kapandıysa (ör. kasada sıfıra harcanan hediye kartı) kullanım `unbacked` olur (`409 HOLD_UNBACKED`).
+        /// - Mağazanın imzalı `processing`/`completed` bildirimi bu çağrıdan önce gelirse ayrılanın TAMAMI düşülür (bildirimde kısmi tutar yoktur); sonra gelen kısmi `captures` bir şey değiştirmez. Kısmi düşüm isteyen eklenti, siparişi ödenmiş saymadan önce bu çağrıyı yapmalıdır.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.redeem` — Online ödemede kart kodu kullanımı.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/capture</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-captureCheckoutOrder">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<IReadOnlyList<CaptureCheckoutOrderItem>> CaptureCheckoutOrderAsync(Guid id, string orderId, CaptureCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await CaptureCheckoutOrderWithResponseAsync(id, orderId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Ödenen siparişin ayırmasını düş (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/capture</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-captureCheckoutOrder">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<IReadOnlyList<CaptureCheckoutOrderItem>>> CaptureCheckoutOrderWithResponseAsync(Guid id, string orderId, CaptureCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<IReadOnlyList<CaptureCheckoutOrderItem>>(RewloyOperations.CaptureCheckoutOrder, new string[] { PathValue(id), PathValue(orderId) }, null, body, options, cancellationToken);
+
+        /// <summary>Siparişin ayırmasını bırak</summary>
+        /// <remarks>
+        /// <para>Sipariş iptal edildiğinde ya da başarısız olduğunda (ya da mağaza siparişi reddederken): ayrılmış her kod kullanımının tutarı karta döner (`released`). Ayrılmış olmayanlara dokunulmaz; tekrar çağrı aynı sonucu döndürür. `reason`: `cancelled`, `failed` ya da `shop` (varsayılan). Mağazanın imzalı bildirimi `cancelled`/`failed` durumunda da aynı işi yapar.</para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.redeem` — Online ödemede kart kodu kullanımı.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/release</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-releaseCheckoutOrder">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<IReadOnlyList<ReleaseCheckoutOrderItem>> ReleaseCheckoutOrderAsync(Guid id, string orderId, ReleaseCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await ReleaseCheckoutOrderWithResponseAsync(id, orderId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Siparişin ayırmasını bırak (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/release</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-releaseCheckoutOrder">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<IReadOnlyList<ReleaseCheckoutOrderItem>>> ReleaseCheckoutOrderWithResponseAsync(Guid id, string orderId, ReleaseCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<IReadOnlyList<ReleaseCheckoutOrderItem>>(RewloyOperations.ReleaseCheckoutOrder, new string[] { PathValue(id), PathValue(orderId) }, null, body, options, cancellationToken);
+
+        /// <summary>İade edilen siparişin tutarını karta geri yükle</summary>
+        /// <remarks>
+        /// <para>
+        /// - **Tam iade** (gövde boş): düşülen her bakiyenin henüz iade edilmemiş kısmı karta yeni bir kayıtla geri yüklenir (bir kez); kullanımlar `refunded` olur. Kullanılmış tek kullanımlık kupon yeniden açılmaz. Bakiyesi bitip kapanan hediye kartı yeniden açılır. Siparişin bu karta kazandırdığı (damga, puan, ziyaret, cashback) bağlantının `refundReverses` ayarına göre geri alınır, hiçbir zaman sıfırın altına inmeden: yanıtta `unearned` (zaten harcanmış kısım `short`). Mağazanın imzalı `refunded` bildirimi de aynısını yapar.
+        /// - **Kısmi iade** (`amountMinor`): kendiliğinden yapılmaz; elle bir kullanıma (`redemptionId`, siparişte tek bakiyeli kullanım varsa gerekmez) en fazla düşülen − iade edilen kadar. `Idempotency-Key` zorunludur: aynı anahtar ve aynı tutarla tekrar iki kez yüklemez; aynı anahtar başka bir tutarla `422 IDEMPOTENCY_KEY_REUSED`. Kazanç geri alınmaz.
+        /// - Siparişin kazancı bir kez geri alınır: ilk iade sıfır geri aldıysa da (kart kazandığını harcamıştı) sonraki çağrılar yeniden almaz, ilk sonucu döndürür.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.redeem` — Online ödemede kart kodu kullanımı.</para>
+        /// <para>Salt-okunur hesapta da çalışır.</para>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/refund</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundCheckoutOrder">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<RefundCheckoutOrderData> RefundCheckoutOrderAsync(Guid id, string orderId, RefundCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await RefundCheckoutOrderWithResponseAsync(id, orderId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>İade edilen siparişin tutarını karta geri yükle (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/orders/{orderId}/refund</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundCheckoutOrder">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="orderId">Mağazanın sipariş numarası (WooCommerce: sipariş kimliği)</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<RefundCheckoutOrderData>> RefundCheckoutOrderWithResponseAsync(Guid id, string orderId, RefundCheckoutOrderBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<RefundCheckoutOrderData>(RewloyOperations.RefundCheckoutOrder, new string[] { PathValue(id), PathValue(orderId) }, null, body, options, cancellationToken);
+
+        /// <summary>Bağlantının kod kullanımları</summary>
+        /// <remarks>
+        /// <para>Bu mağazada kullanılan Rewloy kodları, yeniden eskiye; `state` ile süzülür (`unbacked`: karşılıksız kalanlar). Sipariş numarası mağazanındır; kişisel veri yoktur. `shops.read` ister.</para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.read` — Mağaza bağlantılarını görüntüleme.</para>
+        /// <para><c>GET /v1/shops/{id}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-listShopRedemptions">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="query">The query parameters.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<Page<ListShopRedemptionsItem>> ListShopRedemptionsAsync(Guid id, ListShopRedemptionsQuery? query = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await ListShopRedemptionsWithResponseAsync(id, query, options, cancellationToken).ConfigureAwait(false);
+            return Page<ListShopRedemptionsItem>.From(response);
+        }
+
+        /// <summary>Bağlantının kod kullanımları (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>GET /v1/shops/{id}/redemptions</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-listShopRedemptions">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="query">The query parameters.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<IReadOnlyList<ListShopRedemptionsItem>>> ListShopRedemptionsWithResponseAsync(Guid id, ListShopRedemptionsQuery? query = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<IReadOnlyList<ListShopRedemptionsItem>>(RewloyOperations.ListShopRedemptions, new string[] { PathValue(id) }, query, null, options, cancellationToken);
+
+        /// <summary>Every item of `listShopRedemptions`, page after page.</summary>
+        /// <remarks>
+        /// <para>Walks every page: it asks for the next one (<c>page</c>) while the answer's <c>meta</c> says there is one. <c>Page</c> in the query sets where to start and <c>Limit</c> the page size.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="query">The query parameters.</param>
+        /// <param name="options">Per-call options, applied to every page's request.</param>
+        /// <param name="cancellationToken">Cancels the walk.</param>
+        public IAsyncEnumerable<ListShopRedemptionsItem> ListShopRedemptionsAllAsync(Guid id, ListShopRedemptionsQuery? query = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => PaginateAsync<ListShopRedemptionsItem>(query?.Page ?? 1, (page, token) => ListShopRedemptionsWithResponseAsync(id, (query ?? new ListShopRedemptionsQuery()).ForPage(page), options, token), cancellationToken);
+
+        /// <summary>Ayrılmış tutarı elle bırak</summary>
+        /// <remarks>
+        /// <para>İşletmenin kararı: ayrılmış (`held`) bir kod kullanımının tutarı karta döner (`released`, neden `merchant`); mağaza bu kodu bu siparişe bir daha ayıramaz. Önce neden: defter kaydının notu ve erişim kaydı olur. Kartın programında `scan.adjust` (manuel bakiye düzeltme) ister; yalnız ekip oturumu. Mağaza siparişi sonra öderse ödeme geç düşüm olarak denenir (kartta değer yoksa karşılıksız kalır).</para>
+        /// <para>**Kimlik:** ekip oturumu.</para>
+        /// <para>**Yetki:** `scan.adjust` — Manuel bakiye düzeltme.</para>
+        /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/release</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-releaseShopRedemption">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="redemptionId">The `redemptionId` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<ReleaseShopRedemptionData> ReleaseShopRedemptionAsync(Guid id, Guid redemptionId, ReleaseShopRedemptionBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await ReleaseShopRedemptionWithResponseAsync(id, redemptionId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Ayrılmış tutarı elle bırak (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/release</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-releaseShopRedemption">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="redemptionId">The `redemptionId` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<ReleaseShopRedemptionData>> ReleaseShopRedemptionWithResponseAsync(Guid id, Guid redemptionId, ReleaseShopRedemptionBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<ReleaseShopRedemptionData>(RewloyOperations.ReleaseShopRedemption, new string[] { PathValue(id), PathValue(redemptionId) }, null, body, options, cancellationToken);
+
+        /// <summary>Elle iade</summary>
+        /// <remarks>
+        /// <para>Kısmi iade gibi kendiliğinden yapılmayan bir iade: düşülmüş bir bakiyeden en fazla düşülen − iade edilen kadarı karta yeni bir kayıtla geri yüklenir. Önce neden; kartın programında `scan.adjust` ister, yalnız ekip oturumu. `Idempotency-Key` zorunludur: aynı anahtarla tekrar bir kez yükler.</para>
+        /// <para>**Kimlik:** ekip oturumu.</para>
+        /// <para>**Yetki:** `scan.adjust` — Manuel bakiye düzeltme.</para>
+        /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/refund</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundShopRedemption">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="redemptionId">The `redemptionId` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<RefundShopRedemptionData> RefundShopRedemptionAsync(Guid id, Guid redemptionId, RefundShopRedemptionBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await RefundShopRedemptionWithResponseAsync(id, redemptionId, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Elle iade (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/refund</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundShopRedemption">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="redemptionId">The `redemptionId` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<RefundShopRedemptionData>> RefundShopRedemptionWithResponseAsync(Guid id, Guid redemptionId, RefundShopRedemptionBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<RefundShopRedemptionData>(RewloyOperations.RefundShopRedemption, new string[] { PathValue(id), PathValue(redemptionId) }, null, body, options, cancellationToken);
+
+        /// <summary>Ödeme adımı ayarları</summary>
+        /// <remarks>
+        /// <para>
+        /// Mağazanın kart kodu ayarlarını değiştirir; yalnız gönderilenler değişir. Bağlantının programında `shops.manage` ister — eklentinin kendi anahtarı da kendi bağlantısının ayarlarını değiştirebilir (WordPress'teki Ayarlar). Her değişiklik eskisi ve yenisiyle kayda geçer.
+        /// - `tax`: kart değerinin siparişe nasıl uygulanacağı (eklenti uygular). `refundReverses`: iade edilen siparişin kazancı. `holdDays`: 1–30.
+        /// - `accepts.programIds`: işletmenin bu mağazada kodu kabul edilen diğer programları (bütün liste; boş liste hepsini kapatır). Yalnız etkin hediye kartı, cashback, kupon ve indirim kartı programları. Eklentinin anahtarı yalnız tavanının içinde açabilir, tavanı genişletemez (`403 OUT_OF_SCOPE`); bir kişi programda `shops.manage` taşıyorsa açabilir ve eklentiyle kurulmuş bir bağlantıda önce tavana ekler (`PUT /v1/shops/{id}/ceiling`). Kapatılan programın kodları hemen reddedilir; önceden ayrılmış tutarlar siparişleri bitene dek geçerlidir.
+        /// </para>
+        /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.manage` — Mağaza bağlantısı yönetimi.</para>
+        /// <para><c>PATCH /v1/shops/{id}/settings</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopSettings">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<SetShopSettingsData> SetShopSettingsAsync(Guid id, SetShopSettingsBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await SetShopSettingsWithResponseAsync(id, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Ödeme adımı ayarları (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>PATCH /v1/shops/{id}/settings</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopSettings">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<SetShopSettingsData>> SetShopSettingsWithResponseAsync(Guid id, SetShopSettingsBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<SetShopSettingsData>(RewloyOperations.SetShopSettings, new string[] { PathValue(id) }, null, body, options, cancellationToken);
+
+        /// <summary>Eklentinin anahtarının kabul edebileceği programlar (tavan)</summary>
+        /// <remarks>
+        /// <para>
+        /// Eklentiyle kurulmuş bir bağlantının anahtarına işletmenin diğer programlarının kodlarını kullanma yetkisi verir: "E-ticaret · harcama" rolü (yalnız `shops.redeem`, kart vermez), tam olarak bu programlarla sınırlı. Boş liste yetkiyi kaldırır; bağlantının açık programları yeni tavana indirilir. Bağlantı kurulurken tavan, kodu oluşturan kişinin verebileceği bütün programlardır; hiçbiri açık değildir.
+        /// - Yalnız ekip oturumu; her programda `shops.manage`, ayrıca `apikeys.manage` ve — bir yetki verildiği için — `team.manage` ile tüm şubelerde `shops.redeem` (alt küme kuralı). Değişiklik ekip kaydına `grant.given` / `grant.revoked` olarak geçer.
+        /// </para>
+        /// <para>**Kimlik:** ekip oturumu.</para>
+        /// <para>**Yetki:** `shops.manage` — Mağaza bağlantısı yönetimi.</para>
+        /// <para><c>PUT /v1/shops/{id}/ceiling</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopCeiling">API referansı</see></para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<SetShopCeilingData> SetShopCeilingAsync(Guid id, SetShopCeilingBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await SetShopCeilingWithResponseAsync(id, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Eklentinin anahtarının kabul edebileceği programlar (tavan) (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>PUT /v1/shops/{id}/ceiling</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-setShopCeiling">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="body">The JSON body.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<SetShopCeilingData>> SetShopCeilingWithResponseAsync(Guid id, SetShopCeilingBody body, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<SetShopCeilingData>(RewloyOperations.SetShopCeiling, new string[] { PathValue(id) }, null, body, options, cancellationToken);
+
+        // ------------------------------------------------------------ Kart sahibi
+
+        /// <summary>Online alışveriş kodları</summary>
+        /// <remarks>
+        /// <para>
+        /// "Online alışverişte kullan" düğmesi için: `online` işletmenin açık bir mağazasının bu kartı kabul edip etmediğidir (değilse düğmeyi göstermeyin). `offer` bir kodun şimdi ne vereceği (bakiyeli kartta `maxMinor` kullanılabilir bakiye), verilemiyorsa `refusal` nedenidir (`INSUFFICIENT_BALANCE`, `PASS_USED_UP`, `VOUCHER_NOT_ONLINE`, `PASS_INACTIVE`, `NOT_ONLINE` …).
+        /// `holds`: karttan şu an bir online siparişe ayrılmış tutarlar ve en geç ne zaman döneceği ("₺40,00 bir online siparişe ayrıldı…" satırı). `codes`: son 7 günün kodları, kodun kendisi olmadan.
+        /// </para>
+        /// <para>**Kimlik:** kart sahibi oturumu.</para>
+        /// <para><c>GET /v1/holder/cards/{serial}/checkout-codes</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderCheckoutCodes">API referansı</see></para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<HolderCheckoutCodesData> HolderCheckoutCodesAsync(string serial, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await HolderCheckoutCodesWithResponseAsync(serial, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Online alışveriş kodları (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>GET /v1/holder/cards/{serial}/checkout-codes</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderCheckoutCodes">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<HolderCheckoutCodesData>> HolderCheckoutCodesWithResponseAsync(string serial, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<HolderCheckoutCodesData>(RewloyOperations.HolderCheckoutCodes, new string[] { PathValue(serial) }, null, null, options, cancellationToken);
+
+        /// <summary>Online alışveriş kodu oluştur</summary>
+        /// <remarks>
+        /// <para>
+        /// Kart için tek kullanımlık bir ödeme kodu (`RW-XXXX-XXXX`) oluşturur; mağazanın ödeme adımında kupon alanına yazılır. 15 dakika içinde kullanılmaya başlanmalı, 45 dakika içinde bir siparişe bağlanmalıdır; yalnız işletmenin kendi mağazalarında geçer. Kod oluşturmak değer ayırmaz: ayırma sipariş verilince yapılır.
+        /// - `amountMinor`: yalnız hediye kartı ve cashback — kodun en fazla düşebileceği tutar; verilmezse kullanılabilir bakiyenin tamamı.
+        /// - Kod **yalnız bu yanıtta** gelir. Karta bir kodun oluşturulduğu, kartı tutan hesapların diğer cihazlarına İşlem bildirimiyle söylenir.
+        /// - Sınırlar: kart başına 3 açık kod (`TOO_MANY_CODES`), saatte 10 (`RATE_LIMITED`).
+        /// </para>
+        /// <para>**Kimlik:** kart sahibi oturumu.</para>
+        /// <para><c>POST /v1/holder/cards/{serial}/checkout-codes</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-mintHolderCheckoutCode">API referansı</see></para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task<MintHolderCheckoutCodeData> MintHolderCheckoutCodeAsync(string serial, MintHolderCheckoutCodeBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var response = await MintHolderCheckoutCodeWithResponseAsync(serial, body, options, cancellationToken).ConfigureAwait(false);
+            return response.Data;
+        }
+
+        /// <summary>Online alışveriş kodu oluştur (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>POST /v1/holder/cards/{serial}/checkout-codes</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-mintHolderCheckoutCode">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="body">The JSON body; left out, `{}` is sent.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse<MintHolderCheckoutCodeData>> MintHolderCheckoutCodeWithResponseAsync(string serial, MintHolderCheckoutCodeBody? body = null, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeAsync<MintHolderCheckoutCodeData>(RewloyOperations.MintHolderCheckoutCode, new string[] { PathValue(serial) }, null, body, options, cancellationToken);
+
+        /// <summary>Kodu iptal et</summary>
+        /// <remarks>
+        /// <para>Açık bir kodu hemen geçersiz kılar (iptal edilmiş kodu tekrar iptal etmek de 204). Bir siparişe bağlanmış kod iptal edilemez (`409 CODE_ATTACHED`): sipariş iptal edilirse ayrılan tutar karta kendiliğinden döner.</para>
+        /// <para>**Kimlik:** kart sahibi oturumu.</para>
+        /// <para><c>DELETE /v1/holder/cards/{serial}/checkout-codes/{id}</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-cancelHolderCheckoutCode">API referansı</see></para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public async Task CancelHolderCheckoutCodeAsync(string serial, Guid id, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => await CancelHolderCheckoutCodeWithResponseAsync(serial, id, options, cancellationToken).ConfigureAwait(false);
+
+        /// <summary>Kodu iptal et (the whole answer)</summary>
+        /// <remarks>
+        /// <para><c>DELETE /v1/holder/cards/{serial}/checkout-codes/{id}</c></para>
+        /// <para><see href="https://rewloy.com/gelistiriciler/api#op-cancelHolderCheckoutCode">API referansı</see></para>
+        /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
+        /// </remarks>
+        /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
+        /// <param name="id">The `id` of the path.</param>
+        /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
+        /// <param name="cancellationToken">Cancels the call and any retry still waiting.</param>
+        public Task<RewloyResponse> CancelHolderCheckoutCodeWithResponseAsync(string serial, Guid id, RequestOptions? options = null, CancellationToken cancellationToken = default)
+            => InvokeNoContentAsync(RewloyOperations.CancelHolderCheckoutCode, new string[] { PathValue(serial), PathValue(id) }, null, null, options, cancellationToken);
 
         // ------------------------------------------------------------ Ekip
 
@@ -6243,10 +6869,14 @@ namespace Rewloy
 
         /// <summary>E-posta ekle: kod gönder</summary>
         /// <remarks>
-        /// <para>Adrese 6 haneli bir kod gider (15 dakika). Kodu bu yanıttaki `request` ile `POST /v1/holder/identities/email/verify` gönderin. Doğrulanan adresle başka işletmelerden aldığınız kartlar da hesaba gelir. IP başına 15 dakikada 12, hesap başına saatte 10.</para>
+        /// <para>
+        /// Adrese 6 haneli bir kod gider (15 dakika). Kodu bu yanıttaki `request` ile `POST /v1/holder/identities/email/verify` gönderin. Doğrulanan adresle başka işletmelerden aldığınız kartlar da hesaba gelir. IP başına 15 dakikada 12, hesap başına saatte 10.
+        /// - **Idempotency-Key** (isteğe bağlı, önerilir; 8–64 karakter, her yeni istek için yeni bir UUID): aynı anahtar ve aynı gövdeyle tekrar yeni kod GÖNDERMEZ, ilk yanıtı (aynı `request`) `Idempotent-Replayed: true` ile döndürür ve sınırlardan düşmez — bağlantısı kopan uygulama güvenle yineler. Aynı anahtar başka bir gövdeyle `422 IDEMPOTENCY_KEY_REUSED`; ilk istek sürerken `409 IDEMPOTENCY_IN_PROGRESS` (bir şey gönderilmez). Yanıt şifreli saklanır, 7 gün tekrar edilir; kodun kendisi 15 dakika geçerlidir, yeni kod için yeni anahtar gönderin. Oturumsuz çağrıda anahtar istemcinin IP adresine bağlıdır. Başlık yoksa her çağrı yeni bir kod ve yeni bir `request` demektir.
+        /// </para>
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/email</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderEmail">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -6261,6 +6891,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/email</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderEmail">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -6308,10 +6939,12 @@ namespace Rewloy
         /// - Yalnız Türkiye cep telefonu numaraları (`+90 5…`); değilse `400 INVALID_PHONE`. Telefonla giriş bu ortamda açık değilse `501 NOT_ENABLED`. `channel` verilmezse şu an açık olan ilk yol (önce WhatsApp); istenen yol açık değilse `501 NOT_ENABLED`, bugünkü bütçesi dolduysa `503 PHONE_BUSY` (`details.channels`: şu an açık olanlar).
         /// - Eklenen numarayla bundan sonra girilir ve numarayla katılınan kartlar bu hesaba gelir; daha önce başka biri o numarayla katıldıysa o kartlar gelmez (numaralar el değiştirir).
         /// - Bir numaraya saatte 3, günde 6 kod gider, WhatsApp ve SMS birlikte (fazlası sessizce gönderilmez). IP başına saatte 10, hesap başına saatte 10.
+        /// - **Idempotency-Key** (isteğe bağlı, önerilir; 8–64 karakter, her yeni istek için yeni bir UUID): aynı anahtar ve aynı gövdeyle tekrar yeni kod GÖNDERMEZ, ilk yanıtı (aynı `request`) `Idempotent-Replayed: true` ile döndürür ve sınırlardan düşmez — bağlantısı kopan uygulama güvenle yineler. Aynı anahtar başka bir gövdeyle `422 IDEMPOTENCY_KEY_REUSED`; ilk istek sürerken `409 IDEMPOTENCY_IN_PROGRESS` (bir şey gönderilmez). Yanıt şifreli saklanır, 7 gün tekrar edilir; kodun kendisi 15 dakika geçerlidir, yeni kod için yeni anahtar gönderin. Oturumsuz çağrıda anahtar istemcinin IP adresine bağlıdır. Başlık yoksa her çağrı yeni bir kod ve yeni bir `request` demektir.
         /// </para>
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/phone</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderPhone">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -6326,6 +6959,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/phone</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderPhone">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -6431,10 +7065,12 @@ namespace Rewloy
         /// Hesabın bir e-postasının ya da numarasının (`GET /v1/holder/account` listesindeki kimliği) yerine yenisi (ADR 170): adrese `email`, numaraya `phone` (aynı türden). Yeniye 6 haneli bir kod gider; kodu bu yanıttaki `request` ile `POST /v1/holder/identities/{id}/replace/verify` gönderin.
         /// - Uygulamanın oturumu cihazın kanıtıdır (web'deki cihaz anahtarının yerine).
         /// - Yeni adres ya da numara eskisiyle aynıysa ya da zaten bu hesabınsa `409 IDENT_SAME`. Numara için telefonla giriş açık değilse `501 NOT_ENABLED`; `channel` ve sınırlar `POST /v1/holder/identities/phone` gibidir. Hesap başına saatte 10 (ekleme ve değiştirme birlikte).
+        /// - **Idempotency-Key** (isteğe bağlı, önerilir; 8–64 karakter, her yeni istek için yeni bir UUID): aynı anahtar ve aynı gövdeyle tekrar yeni kod GÖNDERMEZ, ilk yanıtı (aynı `request`) `Idempotent-Replayed: true` ile döndürür ve sınırlardan düşmez — bağlantısı kopan uygulama güvenle yineler. Aynı anahtar başka bir gövdeyle `422 IDEMPOTENCY_KEY_REUSED`; ilk istek sürerken `409 IDEMPOTENCY_IN_PROGRESS` (bir şey gönderilmez). Yanıt şifreli saklanır, 7 gün tekrar edilir; kodun kendisi 15 dakika geçerlidir, yeni kod için yeni anahtar gönderin. Oturumsuz çağrıda anahtar istemcinin IP adresine bağlıdır. Başlık yoksa her çağrı yeni bir kod ve yeni bir `request` demektir.
         /// </para>
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/{id}/replace</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
@@ -6450,6 +7086,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/{id}/replace</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
@@ -7099,10 +7736,12 @@ namespace Rewloy
         /// - İsteğe bağlı olarak yalnız hesabın sahibinin bilebileceği bilgiler talebi güçlendirir: kart numaraları (`cards`, en çok 5), kartların olduğu işletmeler (`businesses`, en çok 5), kartın son kullanıldığı zaman (`lastVisit`).
         /// - `previousToken`: bu kurulumun daha önceki `rwh_` oturumu (süresi dolmuş olsa da): kurulumun hesaba yeni olmadığını söyler.
         /// - Yanıt eski adresin ya da numaranın kayıtlı olup olmadığını **söylemez**. Sınırlar: IP başına saatte 5 talep, aynı eski adres ya da numara için günde 5; kod sınırları `POST /v1/holder/login` gibidir. Telefonla giriş açık değilse numara `501 NOT_ENABLED`.
+        /// - **Idempotency-Key** (isteğe bağlı, önerilir; 8–64 karakter, her yeni istek için yeni bir UUID): aynı anahtar ve aynı gövdeyle tekrar yeni kod GÖNDERMEZ, ilk yanıtı (aynı `request`) `Idempotent-Replayed: true` ile döndürür ve sınırlardan düşmez — bağlantısı kopan uygulama güvenle yineler. Aynı anahtar başka bir gövdeyle `422 IDEMPOTENCY_KEY_REUSED`; ilk istek sürerken `409 IDEMPOTENCY_IN_PROGRESS` (bir şey gönderilmez). Yanıt şifreli saklanır, 7 gün tekrar edilir; kodun kendisi 15 dakika geçerlidir, yeni kod için yeni anahtar gönderin. Oturumsuz çağrıda anahtar istemcinin IP adresine bağlıdır. Başlık yoksa her çağrı yeni bir kod ve yeni bir `request` demektir.
         /// </para>
         /// <para>**Kimlik:** kimlik gerekmez.</para>
         /// <para><c>POST /v1/holder/recovery</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-startHolderRecovery">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -7117,6 +7756,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/recovery</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-startHolderRecovery">API referansı</see></para>
+        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>

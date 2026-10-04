@@ -41,6 +41,12 @@ namespace Rewloy
             acceptsMerchant: true, idempotency: IdempotencyMode.Required, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
+        /// <summary>`POST /v1/passes/{serial}/sale`: Satışı karta yaz</summary>
+        public static readonly OperationInfo RecordSale = new OperationInfo(
+            "recordSale", "POST", "/v1/passes/{serial}/sale", new string[] { "serial" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.Required, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
         /// <summary>`GET /v1/public/programs/{id}`: Katılım formu</summary>
         public static readonly OperationInfo PublicProgram = new OperationInfo(
             "publicProgram", "GET", "/v1/public/programs/{id}", new string[] { "id" }, CredentialKinds.Public | CredentialKinds.Holder | CredentialKinds.Staff | CredentialKinds.Key,
@@ -69,6 +75,12 @@ namespace Rewloy
         public static readonly OperationInfo EmailCardLink = new OperationInfo(
             "emailCardLink", "POST", "/v1/public/cards/{serial}/email-link", new string[] { "serial" }, CredentialKinds.Public | CredentialKinds.Holder | CredentialKinds.Staff | CredentialKinds.Key,
             acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`GET /v1/meta`: Sürüm</summary>
+        public static readonly OperationInfo GetMeta = new OperationInfo(
+            "getMeta", "GET", "/v1/meta", Array.Empty<string>(), CredentialKinds.Public | CredentialKinds.Key | CredentialKinds.Staff | CredentialKinds.Holder,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: false, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`GET /v1/openapi.json`: OpenAPI 3.1 belgesi</summary>
@@ -104,7 +116,7 @@ namespace Rewloy
         /// <summary>`POST /v1/holder/login`: Kart sahibine giriş kodu gönder</summary>
         public static readonly OperationInfo HolderLogin = new OperationInfo(
             "holderLogin", "POST", "/v1/holder/login", Array.Empty<string>(), CredentialKinds.Public,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            acceptsMerchant: false, idempotency: IdempotencyMode.Optional, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/holder/sessions`: Kodla kart sahibi oturumu aç</summary>
@@ -187,8 +199,8 @@ namespace Rewloy
 
         /// <summary>`POST /v1/auth/invites/{code}/accept`: Daveti kabul et</summary>
         public static readonly OperationInfo AcceptInvite = new OperationInfo(
-            "acceptInvite", "POST", "/v1/auth/invites/{code}/accept", new string[] { "code" }, CredentialKinds.Public,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            "acceptInvite", "POST", "/v1/auth/invites/{code}/accept", new string[] { "code" }, CredentialKinds.Public | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/me/password`: Şifreyi değiştir</summary>
@@ -881,6 +893,96 @@ namespace Rewloy
             acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
+        /// <summary>`PUT /v1/shops/{id}/plugin-abilities`: Eklentinin yetkilerini değiştir</summary>
+        public static readonly OperationInfo SetShopPluginAbilities = new OperationInfo(
+            "setShopPluginAbilities", "PUT", "/v1/shops/{id}/plugin-abilities", new string[] { "id" }, CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/checkout-codes/quote`: Ödeme adımındaki kodu sor</summary>
+        public static readonly OperationInfo QuoteCheckoutCode = new OperationInfo(
+            "quoteCheckoutCode", "POST", "/v1/shops/{id}/checkout-codes/quote", new string[] { "id" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`GET /v1/shops/{id}/orders/{orderId}/redemptions`: Siparişin kod kullanımları</summary>
+        public static readonly OperationInfo ListOrderRedemptions = new OperationInfo(
+            "listOrderRedemptions", "GET", "/v1/shops/{id}/orders/{orderId}/redemptions", new string[] { "id", "orderId" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: false, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/orders/{orderId}/redemptions`: Siparişe kodu bağla ve değeri ayır</summary>
+        public static readonly OperationInfo HoldCheckoutCode = new OperationInfo(
+            "holdCheckoutCode", "POST", "/v1/shops/{id}/orders/{orderId}/redemptions", new string[] { "id", "orderId" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/orders/{orderId}/capture`: Ödenen siparişin ayırmasını düş</summary>
+        public static readonly OperationInfo CaptureCheckoutOrder = new OperationInfo(
+            "captureCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/capture", new string[] { "id", "orderId" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/orders/{orderId}/release`: Siparişin ayırmasını bırak</summary>
+        public static readonly OperationInfo ReleaseCheckoutOrder = new OperationInfo(
+            "releaseCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/release", new string[] { "id", "orderId" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/orders/{orderId}/refund`: İade edilen siparişin tutarını karta geri yükle</summary>
+        public static readonly OperationInfo RefundCheckoutOrder = new OperationInfo(
+            "refundCheckoutOrder", "POST", "/v1/shops/{id}/orders/{orderId}/refund", new string[] { "id", "orderId" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`GET /v1/shops/{id}/redemptions`: Bağlantının kod kullanımları</summary>
+        public static readonly OperationInfo ListShopRedemptions = new OperationInfo(
+            "listShopRedemptions", "GET", "/v1/shops/{id}/redemptions", new string[] { "id" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: false, response: ResponseKind.Json,
+            isPaged: true, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/redemptions/{redemptionId}/release`: Ayrılmış tutarı elle bırak</summary>
+        public static readonly OperationInfo ReleaseShopRedemption = new OperationInfo(
+            "releaseShopRedemption", "POST", "/v1/shops/{id}/redemptions/{redemptionId}/release", new string[] { "id", "redemptionId" }, CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/shops/{id}/redemptions/{redemptionId}/refund`: Elle iade</summary>
+        public static readonly OperationInfo RefundShopRedemption = new OperationInfo(
+            "refundShopRedemption", "POST", "/v1/shops/{id}/redemptions/{redemptionId}/refund", new string[] { "id", "redemptionId" }, CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.Required, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`PATCH /v1/shops/{id}/settings`: Ödeme adımı ayarları</summary>
+        public static readonly OperationInfo SetShopSettings = new OperationInfo(
+            "setShopSettings", "PATCH", "/v1/shops/{id}/settings", new string[] { "id" }, CredentialKinds.Key | CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`PUT /v1/shops/{id}/ceiling`: Eklentinin anahtarının kabul edebileceği programlar (tavan)</summary>
+        public static readonly OperationInfo SetShopCeiling = new OperationInfo(
+            "setShopCeiling", "PUT", "/v1/shops/{id}/ceiling", new string[] { "id" }, CredentialKinds.Staff,
+            acceptsMerchant: true, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`GET /v1/holder/cards/{serial}/checkout-codes`: Online alışveriş kodları</summary>
+        public static readonly OperationInfo HolderCheckoutCodes = new OperationInfo(
+            "holderCheckoutCodes", "GET", "/v1/holder/cards/{serial}/checkout-codes", new string[] { "serial" }, CredentialKinds.Holder,
+            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: false, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`POST /v1/holder/cards/{serial}/checkout-codes`: Online alışveriş kodu oluştur</summary>
+        public static readonly OperationInfo MintHolderCheckoutCode = new OperationInfo(
+            "mintHolderCheckoutCode", "POST", "/v1/holder/cards/{serial}/checkout-codes", new string[] { "serial" }, CredentialKinds.Holder,
+            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            isPaged: false, deprecation: null);
+
+        /// <summary>`DELETE /v1/holder/cards/{serial}/checkout-codes/{id}`: Kodu iptal et</summary>
+        public static readonly OperationInfo CancelHolderCheckoutCode = new OperationInfo(
+            "cancelHolderCheckoutCode", "DELETE", "/v1/holder/cards/{serial}/checkout-codes/{id}", new string[] { "serial", "id" }, CredentialKinds.Holder,
+            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: false, response: ResponseKind.None,
+            isPaged: false, deprecation: null);
+
         /// <summary>`GET /v1/team`: Ekip</summary>
         public static readonly OperationInfo ListTeam = new OperationInfo(
             "listTeam", "GET", "/v1/team", Array.Empty<string>(), CredentialKinds.Key | CredentialKinds.Staff,
@@ -1250,7 +1352,7 @@ namespace Rewloy
         /// <summary>`POST /v1/holder/identities/email`: E-posta ekle: kod gönder</summary>
         public static readonly OperationInfo AddHolderEmail = new OperationInfo(
             "addHolderEmail", "POST", "/v1/holder/identities/email", Array.Empty<string>(), CredentialKinds.Holder,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            acceptsMerchant: false, idempotency: IdempotencyMode.Optional, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/holder/identities/email/verify`: E-posta ekle: kodu doğrula</summary>
@@ -1262,7 +1364,7 @@ namespace Rewloy
         /// <summary>`POST /v1/holder/identities/phone`: Telefon ekle: kod gönder</summary>
         public static readonly OperationInfo AddHolderPhone = new OperationInfo(
             "addHolderPhone", "POST", "/v1/holder/identities/phone", Array.Empty<string>(), CredentialKinds.Holder,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            acceptsMerchant: false, idempotency: IdempotencyMode.Optional, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/holder/identities/phone/verify`: Telefon ekle: kodu doğrula</summary>
@@ -1286,7 +1388,7 @@ namespace Rewloy
         /// <summary>`POST /v1/holder/identities/{id}/replace`: E-postayı ya da numarayı değiştir: kod gönder</summary>
         public static readonly OperationInfo ReplaceHolderIdentity = new OperationInfo(
             "replaceHolderIdentity", "POST", "/v1/holder/identities/{id}/replace", new string[] { "id" }, CredentialKinds.Holder,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            acceptsMerchant: false, idempotency: IdempotencyMode.Optional, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/holder/identities/{id}/replace/verify`: E-postayı ya da numarayı değiştir: kodu doğrula</summary>
@@ -1424,7 +1526,7 @@ namespace Rewloy
         /// <summary>`POST /v1/holder/recovery`: Hesap kurtarma talebi: yeniye kod gönder</summary>
         public static readonly OperationInfo StartHolderRecovery = new OperationInfo(
             "startHolderRecovery", "POST", "/v1/holder/recovery", Array.Empty<string>(), CredentialKinds.Public,
-            acceptsMerchant: false, idempotency: IdempotencyMode.None, hasBody: true, response: ResponseKind.Json,
+            acceptsMerchant: false, idempotency: IdempotencyMode.Optional, hasBody: true, response: ResponseKind.Json,
             isPaged: false, deprecation: null);
 
         /// <summary>`POST /v1/holder/recovery/verify`: Hesap kurtarma talebi: kodu doğrula, talebi kaydet</summary>
@@ -1446,11 +1548,13 @@ namespace Rewloy
             ["getPass"] = GetPass,
             ["getPassTill"] = GetPassTill,
             ["passAction"] = PassAction,
+            ["recordSale"] = RecordSale,
             ["publicProgram"] = PublicProgram,
             ["joinProgram"] = JoinProgram,
             ["publicCode"] = PublicCode,
             ["claimCode"] = ClaimCode,
             ["emailCardLink"] = EmailCardLink,
+            ["getMeta"] = GetMeta,
             ["openapi"] = Openapi,
             ["login"] = Login,
             ["proveMfa"] = ProveMfa,
@@ -1586,6 +1690,21 @@ namespace Rewloy
             ["createShopConnectToken"] = CreateShopConnectToken,
             ["revokeShopConnectToken"] = RevokeShopConnectToken,
             ["connectShop"] = ConnectShop,
+            ["setShopPluginAbilities"] = SetShopPluginAbilities,
+            ["quoteCheckoutCode"] = QuoteCheckoutCode,
+            ["listOrderRedemptions"] = ListOrderRedemptions,
+            ["holdCheckoutCode"] = HoldCheckoutCode,
+            ["captureCheckoutOrder"] = CaptureCheckoutOrder,
+            ["releaseCheckoutOrder"] = ReleaseCheckoutOrder,
+            ["refundCheckoutOrder"] = RefundCheckoutOrder,
+            ["listShopRedemptions"] = ListShopRedemptions,
+            ["releaseShopRedemption"] = ReleaseShopRedemption,
+            ["refundShopRedemption"] = RefundShopRedemption,
+            ["setShopSettings"] = SetShopSettings,
+            ["setShopCeiling"] = SetShopCeiling,
+            ["holderCheckoutCodes"] = HolderCheckoutCodes,
+            ["mintHolderCheckoutCode"] = MintHolderCheckoutCode,
+            ["cancelHolderCheckoutCode"] = CancelHolderCheckoutCode,
             ["listTeam"] = ListTeam,
             ["listRoles"] = ListRoles,
             ["getMember"] = GetMember,
