@@ -5,6 +5,16 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## 0.2.3 (2026-10-05)
+
+İlk nuget.org sürümü: `dotnet add package Rewloy`. Kod 0.2.2 ile aynı; paket bilgileri nuget.org için
+tamamlandı (ikon, sürüm notları, mutlak README bağlantıları, paket doğrulaması) ve sürümler artık bir `v*`
+etiketiyle GitHub Actions'tan Trusted Publishing ile yayımlanıyor.
+
+First nuget.org release: `dotnet add package Rewloy`. The code is the same as 0.2.2; the package metadata is
+completed for nuget.org (icon, release notes, absolute README links, package validation), and releases are now
+published from GitHub Actions on a `v*` tag with Trusted Publishing.
+
 ## 0.2.2 (2026-10-05)
 
 Rewloy 1.1.0'a (API sürümü) göre yeniden üretildi: 256 işlem (0.2.1'de 255). Kasa
