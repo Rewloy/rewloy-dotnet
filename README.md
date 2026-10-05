@@ -4,7 +4,7 @@ English: [below](#english).
 
 **Rewloy API'nin resmî .NET (C#) kütüphanesi.**
 
-> **Durum: önizleme (0.x): yayımlanmadı; API kararlı, kütüphane arayüzü 1.0'a kadar değişebilir.**
+> **Durum: önizleme (0.x), 0.2.3'ten beri nuget.org'da. API kararlı; kütüphane arayüzü 1.0'a kadar değişebilir.**
 
 [Rewloy](https://rewloy.com), işletmelerin dijital sadakat kartlarını
 müşterinin telefonuna koyar. Kart türleri damga, puan, VIP, cashback, hediye
@@ -34,20 +34,25 @@ kapsar:
 
 ## Kurulum
 
-NuGet'te yayımlanana kadar kaynaktan kurun (.NET SDK 8 ya da üstü ve git
-gerekir). İki yol var:
+Paket [nuget.org'da](https://www.nuget.org/packages/Rewloy):
+
+```sh
+dotnet add package Rewloy
+```
+
+Visual Studio'da: Paket Yöneticisi Konsolu'nda `Install-Package Rewloy`.
+
+Ya da kaynaktan derleyin (.NET SDK 8 ya da üstü ve git gerekir). İki yol var:
 
 ```sh
 git clone https://github.com/Rewloy/rewloy-dotnet
 # 1) projenize doğrudan başvuru:
 dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj
 # 2) ya da yerel bir NuGet kaynağına paketleyin:
-dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs
+dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs -p:PackageVersion=0.0.0-local
 dotnet nuget add source ./nupkgs --name rewloy-yerel
-dotnet add package Rewloy --version 0.2.2
+dotnet add package Rewloy --version 0.0.0-local   # nuget.org'daki sürümle karışmaz
 ```
-
-Yayımlandığında: `dotnet add package Rewloy`.
 
 **Hangi çerçeve?** Paket iki derleme taşır:
 - `net8.0`: güncel .NET için;
@@ -598,7 +603,7 @@ Developer docs (in Turkish): **https://rewloy.com/gelistiriciler**.
 
 **The official .NET (C#) library for the Rewloy API.**
 
-> **Status: preview (0.x), not published yet. The API is stable; the
+> **Status: preview (0.x), on nuget.org since 0.2.3. The API is stable; the
 > library's interface may change until 1.0.**
 
 The documentation of the API itself is in Turkish (links above). In short:
@@ -618,14 +623,22 @@ The documentation of the API itself is in Turkish (links above). In short:
 
 ### Install
 
-Until it is on NuGet, install it from source (.NET SDK 8 or later, and git):
+From [nuget.org](https://www.nuget.org/packages/Rewloy):
+
+```sh
+dotnet add package Rewloy
+```
+
+(or `Install-Package Rewloy` in Visual Studio's Package Manager Console).
+
+Or build it from source (.NET SDK 8 or later, and git):
 
 ```sh
 git clone https://github.com/Rewloy/rewloy-dotnet
 dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj      # a project reference, or:
-dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs      # a package in a local source
+dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs -p:PackageVersion=0.0.0-local   # a local package
 dotnet nuget add source ./nupkgs --name rewloy-local
-dotnet add package Rewloy --version 0.2.2
+dotnet add package Rewloy --version 0.0.0-local   # never mixed up with the nuget.org version
 ```
 
 On .NET Framework use `<PackageReference>` (with `packages.config`, `System.Text.Json`
