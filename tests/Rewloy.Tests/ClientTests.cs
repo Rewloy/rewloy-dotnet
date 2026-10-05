@@ -83,7 +83,7 @@ namespace Rewloy.Tests
             Assert.Null(req.Header("Rewloy-Merchant"));
             Assert.Null(req.Header("Idempotency-Key"));
             Assert.Null(req.Body);
-            Assert.StartsWith("rewloy-dotnet/0.1.0 ", req.Header("User-Agent"));
+            Assert.StartsWith("rewloy-dotnet/0.2.0 ", req.Header("User-Agent"));
             Assert.Equal("ABCD-EFGH-JKLM", pass.Serial);
             Assert.Equal(Guid.Parse("0192f7c1-0000-7000-8000-000000000002"), pass.ProgramId);
             Assert.Equal(3, pass.Balance);

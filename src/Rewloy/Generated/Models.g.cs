@@ -48,13 +48,17 @@ namespace Rewloy.Models
         [JsonPropertyName("homeLocationId")]
         public Guid? HomeLocationId { get; set; }
 
-        /// <summary>Hediye kartı tutarı, kuruş</summary>
+        /// <summary>Hediye kartı tutarı, programın para biriminde, kuruş</summary>
         [JsonPropertyName("faceMinor")]
         public int? FaceMinor { get; set; }
 
         /// <summary>`kvkkConsent`.</summary>
         [JsonPropertyName("kvkkConsent")]
         public bool? KvkkConsent { get; set; }
+
+        /// <summary>İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez.</summary>
+        [JsonPropertyName("currency")]
+        public string? Currency { get; set; }
 
         /// <summary>`firstName`.</summary>
         [JsonPropertyName("firstName")]
@@ -79,6 +83,17 @@ namespace Rewloy.Models
         /// <summary>Siparişin geldiği mağaza bağlantısı (`GET /v1/shops`). `orderId` ile birlikte.</summary>
         [JsonPropertyName("shopId")]
         public Guid? ShopId { get; set; }
+
+        /// <summary>Kişinin bu programda açık kartı varsa: `create` (varsayılan) yine yeni kart açar, `return` o kartı döndürür (`created: false`). `email` ister.</summary>
+        /// <remarks>
+        /// <para>One of: `create`, `return`.</para>
+        /// </remarks>
+        [JsonPropertyName("ifExists")]
+        public string? IfExists { get; set; }
+
+        /// <summary>true: kartın bağlantısı kişinin e-postasına gider (katılım formunun e-postası). `email` ister.</summary>
+        [JsonPropertyName("sendEmail")]
+        public bool? SendEmail { get; set; }
     }
 
     /// <summary>The `IssuePassData` object.</summary>
@@ -88,9 +103,26 @@ namespace Rewloy.Models
         [JsonPropertyName("serial")]
         public string Serial { get; set; } = default!;
 
-        /// <summary>Always present.</summary>
+        /// <summary>Yeni kartta müşterinin özel kart bağlantısı (`?k=…`): müşteriye iletin, kayıtlara yazmayın. Var olan kartta (`created: false`) görüntüleme anahtarı taşımayan adres.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
         [JsonPropertyName("cardUrl")]
         public string CardUrl { get; set; } = default!;
+
+        /// <summary>true: yeni kart açıldı · false: `ifExists: "return"` ile kişinin var olan kartı döndü</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("created")]
+        public bool Created { get; set; }
+
+        /// <summary>Yalnız `sendEmail: true` iken: e-postaya ne oldu (`queued`, `suppressed`, `rate_limited`, `not_sent`)</summary>
+        /// <remarks>
+        /// <para>One of: `queued`, `suppressed`, `rate_limited`, `not_sent`.</para>
+        /// </remarks>
+        [JsonPropertyName("emailStatus")]
+        public string? EmailStatus { get; set; }
 
         /// <summary>Yalnız `orderId` gönderildiyse: siparişin bu karta ne olduğu.</summary>
         [JsonPropertyName("order")]
@@ -147,26 +179,62 @@ namespace Rewloy.Models
         [JsonPropertyName("status")]
         public string Status { get; set; } = default!;
 
-        /// <summary>Damga, puan, ziyaret ya da kuruş (türüne göre).</summary>
+        /// <summary>Programın adı (ADR 182)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>Kartın para birimi (ISO 4217, ör. `TRY`, `EUR`): programın para birimi — cashback ve hediye kartında programın kendi para birimi, öteki türlerde işletmeninki. Bu karttaki satışın ve işlemlerin `amountMinor`'ı bu birimdedir ve `currency` alanları bununla karşılaştırılır (ADR 182)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>Türe göre birimi değişir: damga kartında damga, puan kartında puan, VIP'te ziyaret, cashback ve hediye kartında kuruş (`money.currency` cinsinden); kupon ve indirim kartının bakiyesi yoktur (0). Yeni kodda türe özgü alanları okuyun: `stamps`, `points`, `money`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("balance")]
         public double? Balance { get; set; }
 
+        /// <summary>Yalnız damga kartında: kartta şu an kaç damga var (`count`) ve bir ödül kaç damga ister (`max`). Hazır ödül sayısı `floor(count / max)`, sıradaki ödüle doğru damga `count % max`; program ödülden sonra damga biriktiriyorsa `count` `max`'ı aşabilir.</summary>
+        [JsonPropertyName("stamps")]
+        public GetPassDataStamps? Stamps { get; set; }
+
+        /// <summary>Yalnız puan kartında: puan bakiyesi</summary>
+        [JsonPropertyName("points")]
+        public long? Points { get; set; }
+
+        /// <summary>Yalnız cashback ve hediye kartında: harcanabilir bakiye, kuruş, ve para birimi. Online bir siparişe ayrılan tutar düşülmüştür.</summary>
+        [JsonPropertyName("money")]
+        public GetPassDataMoney? Money { get; set; }
+
+        /// <summary>Yalnız kimlik `customers.read` taşıyorsa (kartın programında): kartın müşterisi. null: kartın müşterisi yok, ya da müşteri kimliğin şube kapsamının dışında. Yetki yoksa alan gelmez.</summary>
+        [JsonPropertyName("customer")]
+        public GetPassDataCustomer? Customer { get; set; }
+
         /// <summary>`progressLabel`.</summary>
         [JsonPropertyName("progressLabel")]
         public string? ProgressLabel { get; set; }
 
-        /// <summary>`progressValue`.</summary>
+        /// <summary>Cüzdandaki ilerleme yazısı, gösterim içindir, ayrıştırmayın: damga kartında ödül hazır olana dek `"3 / 8"`, hazır olunca ödülün adı (`"Bedava kahve"`, birden çoksa `"2 × Bedava kahve"`); puanda bakiye; VIP'te seviye adı; cashback ve hediye kartında biçimlenmiş tutar (`"€2,25"`); kuponda teklif metni; indirimde `"%10"`.</summary>
         [JsonPropertyName("progressValue")]
         public string? ProgressValue { get; set; }
 
-        /// <summary>Always present.</summary>
+        /// <summary>Damga: en az bir dolu kart · puan: bakiye en az bir ödüle yetiyor · VIP: bir seviyede · cashback ve hediye kartı: bakiye sıfırdan büyük (harcanacak bir şey var; bir "ödül" değil) · kupon ve indirim: her zaman true (kartın kendisi teklif). Kasada bir işlemin yapılıp yapılamayacağı için `actions[].ready` okuyun.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
         [JsonPropertyName("rewardReady")]
         public bool RewardReady { get; set; }
 
-        /// <summary>Always present.</summary>
+        /// <summary>Damga: hazır ödül sayısı · puan: bakiyenin yettiği ödül basamağı sayısı · VIP: seviyedeyse 1 · cashback ve hediye kartı: bakiye varsa 1 · kupon ve indirim: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
         [JsonPropertyName("rewardsReady")]
         public int RewardsReady { get; set; }
 
@@ -185,6 +253,89 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("updatedAt")]
         public DateTimeOffset UpdatedAt { get; set; }
+
+        /// <summary>Bu kartın türünün aldığı kasa işlemleri (`POST /v1/passes/{serial}/actions`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("actions")]
+        public IReadOnlyList<GetPassDataActionsItem> Actions { get; set; } = Array.Empty<GetPassDataActionsItem>();
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("sale")]
+        public GetPassDataSale Sale { get; set; } = default!;
+    }
+
+    /// <summary>Yalnız damga kartında: kartta şu an kaç damga var (`count`) ve bir ödül kaç damga ister (`max`). Hazır ödül sayısı `floor(count / max)`, sıradaki ödüle doğru damga `count % max`; program ödülden sonra damga biriktiriyorsa `count` `max`'ı aşabilir.</summary>
+    public sealed class GetPassDataStamps : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("max")]
+        public int Max { get; set; }
+    }
+
+    /// <summary>Yalnız cashback ve hediye kartında: harcanabilir bakiye, kuruş, ve para birimi. Online bir siparişe ayrılan tutar düşülmüştür.</summary>
+    public sealed class GetPassDataMoney : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+    }
+
+    /// <summary>Yalnız kimlik `customers.read` taşıyorsa (kartın programında): kartın müşterisi. null: kartın müşterisi yok, ya da müşteri kimliğin şube kapsamının dışında. Yetki yoksa alan gelmez.</summary>
+    public sealed class GetPassDataCustomer : RewloyObject
+    {
+        /// <summary>Müşterinin adı; adı verilmemişse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+    }
+
+    /// <summary>The `GetPassDataActionsItem` object.</summary>
+    public sealed class GetPassDataActionsItem : RewloyObject
+    {
+        /// <summary>One of: `earn-stamps`, `redeem-stamps`, `earn-points`, `redeem-reward`, `visit`, `spend`, `accrue`, `use`, `load`, `spend-points`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("action")]
+        public string Action { get; set; } = default!;
+
+        /// <summary>İşleme özgü zorunlu alanlar; `action` ve `locationId` her işlemde gerekir</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("needs")]
+        public IReadOnlyList<string> Needs { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kartın durumuna göre işlem şimdi yapılabilir mi (ör. damga ödülü hazır mı, bakiye var mı, kupon kullanılmamış mı). Şube kuralı burada değil: `GET /v1/passes/{serial}/till`; yetkiler de değil</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ready")]
+        public bool Ready { get; set; }
+    }
+
+    /// <summary>The `GetPassDataSale` object.</summary>
+    public sealed class GetPassDataSale : RewloyObject
+    {
+        /// <summary>Bir satışın (`POST /v1/passes/{serial}/sale`) bu türde yazdığı: damga, puan, ziyaret, cashback ya da hiçbir şey</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("writes")]
+        public string Writes { get; set; } = default!;
     }
 
     /// <summary>Query parameters of `getPassTill`.</summary>
@@ -294,6 +445,10 @@ namespace Rewloy.Models
         /// <summary>`rewardIndex`.</summary>
         [JsonPropertyName("rewardIndex")]
         public int? RewardIndex { get; set; }
+
+        /// <summary>İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez.</summary>
+        [JsonPropertyName("currency")]
+        public string? Currency { get; set; }
     }
 
     /// <summary>The `PassActionData` object.</summary>
@@ -330,6 +485,168 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("factor")]
         public int Factor { get; set; }
+    }
+
+    /// <summary>The `RecordSaleBody` object.</summary>
+    public sealed class RecordSaleBody : RewloyObject
+    {
+        /// <summary>Satışın yapıldığı şube. Verilmezse (online) satış bir şubeye yazılmaz; kimliğin her şubede `scan.use` yetkisi olmalıdır.</summary>
+        [JsonPropertyName("locationId")]
+        public Guid? LocationId { get; set; }
+
+        /// <summary>Ödenen toplam, kartın (programın) para biriminde, kuruş</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public int AmountMinor { get; set; }
+
+        /// <summary>Fiş ya da sipariş numarası; defter kaydının notuna yazılır</summary>
+        [JsonPropertyName("reference")]
+        public string? Reference { get; set; }
+
+        /// <summary>İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez.</summary>
+        [JsonPropertyName("currency")]
+        public string? Currency { get; set; }
+    }
+
+    /// <summary>The `RecordSaleData` object.</summary>
+    public sealed class RecordSaleData : RewloyObject
+    {
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("applied")]
+        public string Applied { get; set; } = default!;
+
+        /// <summary>Yazılan: damga, puan, ziyaret ya da kuruş; hiçbir şey yazılmadıysa 0. Tekrarda ilk isteğin yazdığı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("credited")]
+        public long Credited { get; set; }
+
+        /// <summary>Yalnız `applied: "none"` iken: neden hiçbir şey yazılmadı</summary>
+        /// <remarks>
+        /// <para>One of: `below_minimum`, `visit_already_counted`, `card_full`, `type_does_not_earn`.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string? Reason { get; set; }
+
+        /// <summary>Satıştan sonra kartın bakiyesi (damga, puan, ziyaret ya da kuruş); kupon ve indirimde null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("balance")]
+        public double? Balance { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("duplicate")]
+        public bool Duplicate { get; set; }
+
+        /// <summary>Damga: ödül hazır oldu · VIP: seviye</summary>
+        [JsonPropertyName("detail")]
+        public string? Detail { get; set; }
+
+        /// <summary>Bu kazanımı katlayan kasa kampanyası (ADR 139)</summary>
+        [JsonPropertyName("promotion")]
+        public RecordSaleDataPromotion? Promotion { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("rewardReady")]
+        public bool RewardReady { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("rewardsReady")]
+        public int RewardsReady { get; set; }
+    }
+
+    /// <summary>Bu kazanımı katlayan kasa kampanyası (ADR 139)</summary>
+    public sealed class RecordSaleDataPromotion : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("factor")]
+        public int Factor { get; set; }
+    }
+
+    /// <summary>The `ReverseSaleBody` object.</summary>
+    public sealed class ReverseSaleBody : RewloyObject
+    {
+        /// <summary>Satışın `Idempotency-Key`'i (aynı kimlikle gönderilmiş)</summary>
+        [JsonPropertyName("saleKey")]
+        public string? SaleKey { get; set; }
+
+        /// <summary>Satışın `reference`'ı; bu kartta tek bir satışta olmalı</summary>
+        [JsonPropertyName("reference")]
+        public string? Reference { get; set; }
+
+        /// <summary>Geri almanın yapıldığı şube (isteğe bağlı)</summary>
+        [JsonPropertyName("locationId")]
+        public Guid? LocationId { get; set; }
+    }
+
+    /// <summary>The `ReverseSaleData` object.</summary>
+    public sealed class ReverseSaleData : RewloyObject
+    {
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Geri alınan satışın yazdığı</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("applied")]
+        public string Applied { get; set; } = default!;
+
+        /// <summary>Geri alınan: satışın yazdığı damga, puan, ziyaret ya da kuruş</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("reversed")]
+        public long Reversed { get; set; }
+
+        /// <summary>Geri almadan sonra kartın bakiyesi</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("balance")]
+        public double Balance { get; set; }
+
+        /// <summary>true: satış daha önce geri alınmıştı; şimdi hiçbir şey yazılmadı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("duplicate")]
+        public bool Duplicate { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("rewardReady")]
+        public bool RewardReady { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("rewardsReady")]
+        public int RewardsReady { get; set; }
     }
 
     /// <summary>The `PublicProgramData` object.</summary>
@@ -613,6 +930,25 @@ namespace Rewloy.Models
         public bool Accepted { get; set; }
     }
 
+    /// <summary>The `GetMetaData` object.</summary>
+    public sealed class GetMetaData : RewloyObject
+    {
+        /// <summary>Rewloy'nun sürümü (package.json), ör. `1.0.0`</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = default!;
+
+        /// <summary>Bu API'nin sürümü</summary>
+        /// <remarks>
+        /// <para>Always `v1`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("apiVersion")]
+        public string ApiVersion { get; set; } = default!;
+    }
+
     /// <summary>The `LoginBody` object.</summary>
     public sealed class LoginBody : RewloyObject
     {
@@ -710,6 +1046,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("testOf")]
         public Guid? TestOf { get; set; }
+
+        /// <summary>İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
     }
 
     /// <summary>The `ProveMfaBody` object.</summary>
@@ -1233,6 +1576,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("testOf")]
         public Guid? TestOf { get; set; }
+
+        /// <summary>İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
     }
 
     /// <summary>The `VerifyEmailBody` object.</summary>
@@ -1306,18 +1656,14 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("email")]
         public string Email { get; set; } = default!;
-
-        /// <summary>Always present.</summary>
-        [JsonPropertyName("userExists")]
-        public bool UserExists { get; set; }
     }
 
     /// <summary>The `AcceptInviteBody` object.</summary>
     public sealed class AcceptInviteBody : RewloyObject
     {
-        /// <summary>Required.</summary>
+        /// <summary>Yalnız yeni hesap için: hesabın şifresi (en az 10 karakter)</summary>
         [JsonPropertyName("password")]
-        public string Password { get; set; } = default!;
+        public string? Password { get; set; }
     }
 
     /// <summary>The `AcceptInviteData` object.</summary>
@@ -1405,6 +1751,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("testOf")]
         public Guid? TestOf { get; set; }
+
+        /// <summary>İşletmenin para birimi (ISO 4217): satışların `amountMinor`'ı ve para kartlarının tutarları bu birimdedir (ADR 182)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
     }
 
     /// <summary>The `ChangePasswordBody` object.</summary>
@@ -2099,6 +2452,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("stats")]
         public ListProgramsItemStats Stats { get; set; } = default!;
+
+        /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("sale")]
+        public ListProgramsItemSale Sale { get; set; } = default!;
     }
 
     /// <summary>The `ListProgramsItemArtwork` object.</summary>
@@ -2135,6 +2495,39 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("rewardsReady")]
         public int RewardsReady { get; set; }
+    }
+
+    /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+    public sealed class ListProgramsItemSale : RewloyObject
+    {
+        /// <summary>Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("writes")]
+        public string Writes { get; set; } = default!;
+
+        /// <summary>Damga ve VIP: satış başına damga ya da ziyaret</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("perSale")]
+        public int? PerSale { get; set; }
+
+        /// <summary>Puan: her 1 birim harcamaya puan (`config.earnRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pointsPerUnit")]
+        public int? PointsPerUnit { get; set; }
+
+        /// <summary>Cashback: toplamın yüzdesi (`config.cashbackRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
     }
 
     /// <summary>Para birimi gönderilmez: hediye kartı ve cashback her zaman işletmenin para birimiyle çalışır.</summary>
@@ -2251,6 +2644,14 @@ namespace Rewloy.Models
         /// <summary>Kupon: teklif metni</summary>
         [JsonPropertyName("offerText")]
         public string? OfferText { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+        /// <remarks>
+        /// <para>`Optional&lt;T&gt;` tells a left-out field from an explicit `null`: set `Optional&lt;T&gt;.Null` to send `null`.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public Optional<CreateProgramBodyOnlineValue> OnlineValue { get; set; }
     }
 
     /// <summary>The `CreateProgramBodySignupFieldsItem` object.</summary>
@@ -2413,6 +2814,24 @@ namespace Rewloy.Models
         public int VisitsRequired { get; set; }
     }
 
+    /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+    public sealed class CreateProgramBodyOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>amount: kuruş (100 – 10.000.000); percent: 1 – 100</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
+    }
+
     /// <summary>The `CreateProgramData` object.</summary>
     public sealed class CreateProgramData : RewloyObject
     {
@@ -2462,6 +2881,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("stats")]
         public CreateProgramDataStats Stats { get; set; } = default!;
+
+        /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("sale")]
+        public CreateProgramDataSale Sale { get; set; } = default!;
     }
 
     /// <summary>The `CreateProgramDataArtwork` object.</summary>
@@ -2498,6 +2924,39 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("rewardsReady")]
         public int RewardsReady { get; set; }
+    }
+
+    /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+    public sealed class CreateProgramDataSale : RewloyObject
+    {
+        /// <summary>Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("writes")]
+        public string Writes { get; set; } = default!;
+
+        /// <summary>Damga ve VIP: satış başına damga ya da ziyaret</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("perSale")]
+        public int? PerSale { get; set; }
+
+        /// <summary>Puan: her 1 birim harcamaya puan (`config.earnRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pointsPerUnit")]
+        public int? PointsPerUnit { get; set; }
+
+        /// <summary>Cashback: toplamın yüzdesi (`config.cashbackRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
     }
 
     /// <summary>The `ProgramDesignOptionsData` object.</summary>
@@ -2707,6 +3166,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("stats")]
         public GetProgramDataStats Stats { get; set; } = default!;
+
+        /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("sale")]
+        public GetProgramDataSale Sale { get; set; } = default!;
     }
 
     /// <summary>The `GetProgramDataArtwork` object.</summary>
@@ -2743,6 +3209,39 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("rewardsReady")]
         public int RewardsReady { get; set; }
+    }
+
+    /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+    public sealed class GetProgramDataSale : RewloyObject
+    {
+        /// <summary>Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("writes")]
+        public string Writes { get; set; } = default!;
+
+        /// <summary>Damga ve VIP: satış başına damga ya da ziyaret</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("perSale")]
+        public int? PerSale { get; set; }
+
+        /// <summary>Puan: her 1 birim harcamaya puan (`config.earnRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pointsPerUnit")]
+        public int? PointsPerUnit { get; set; }
+
+        /// <summary>Cashback: toplamın yüzdesi (`config.cashbackRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
     }
 
     /// <summary>The `UpdateProgramBody` object.</summary>
@@ -2842,6 +3341,14 @@ namespace Rewloy.Models
         /// <summary>Kupon: teklif metni</summary>
         [JsonPropertyName("offerText")]
         public string? OfferText { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+        /// <remarks>
+        /// <para>`Optional&lt;T&gt;` tells a left-out field from an explicit `null`: set `Optional&lt;T&gt;.Null` to send `null`.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public Optional<UpdateProgramBodyOnlineValue> OnlineValue { get; set; }
     }
 
     /// <summary>The `UpdateProgramBodySignupFieldsItem` object.</summary>
@@ -3004,6 +3511,24 @@ namespace Rewloy.Models
         public int VisitsRequired { get; set; }
     }
 
+    /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+    public sealed class UpdateProgramBodyOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>amount: kuruş (100 – 10.000.000); percent: 1 – 100</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
+    }
+
     /// <summary>The `UpdateProgramData` object.</summary>
     public sealed class UpdateProgramData : RewloyObject
     {
@@ -3053,6 +3578,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("stats")]
         public UpdateProgramDataStats Stats { get; set; } = default!;
+
+        /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("sale")]
+        public UpdateProgramDataSale Sale { get; set; } = default!;
     }
 
     /// <summary>The `UpdateProgramDataArtwork` object.</summary>
@@ -3089,6 +3621,39 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("rewardsReady")]
         public int RewardsReady { get; set; }
+    }
+
+    /// <summary>Bir satışın bu programda ne kazandırdığı, kaydedilmiş kurallardan (salt-okunur). Kasa kampanyaları buna dahil değil.</summary>
+    public sealed class UpdateProgramDataSale : RewloyObject
+    {
+        /// <summary>Bir satışın (`POST /v1/passes/{serial}/sale`) bu programın kartlarına yazdığı</summary>
+        /// <remarks>
+        /// <para>One of: `stamps`, `points`, `visit`, `cashback`, `none`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("writes")]
+        public string Writes { get; set; } = default!;
+
+        /// <summary>Damga ve VIP: satış başına damga ya da ziyaret</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("perSale")]
+        public int? PerSale { get; set; }
+
+        /// <summary>Puan: her 1 birim harcamaya puan (`config.earnRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pointsPerUnit")]
+        public int? PointsPerUnit { get; set; }
+
+        /// <summary>Cashback: toplamın yüzdesi (`config.cashbackRate`)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
     }
 
     /// <summary>Query parameters of `deleteProgram`.</summary>
@@ -3236,6 +3801,14 @@ namespace Rewloy.Models
         /// <summary>Kupon: teklif metni</summary>
         [JsonPropertyName("offerText")]
         public string? OfferText { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+        /// <remarks>
+        /// <para>`Optional&lt;T&gt;` tells a left-out field from an explicit `null`: set `Optional&lt;T&gt;.Null` to send `null`.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public Optional<PreviewProgramBodyConfigOnlineValue> OnlineValue { get; set; }
     }
 
     /// <summary>The `PreviewProgramBodyConfigSignupFieldsItem` object.</summary>
@@ -3396,6 +3969,24 @@ namespace Rewloy.Models
         /// <summary>Required.</summary>
         [JsonPropertyName("visitsRequired")]
         public int VisitsRequired { get; set; }
+    }
+
+    /// <summary>Kupon: online mağazada kullanıldığında değeri (ADR 179). Yoksa (ya da null) kupon yalnız mağazada geçer; kodun kendi online değeri ya da tutarı bunun önüne geçer.</summary>
+    public sealed class PreviewProgramBodyConfigOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>amount: kuruş (100 – 10.000.000); percent: 1 – 100</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
     }
 
     /// <summary>The `PreviewProgramData` object.</summary>
@@ -4045,6 +4636,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("identifiers")]
         public IReadOnlyList<ListCustomerCardsItemIdentifiersItem> Identifiers { get; set; } = Array.Empty<ListCustomerCardsItemIdentifiersItem>();
+
+        /// <summary>`q` bir kart numarası olarak okundu ve bu kartın numarası onunla başlıyor: aranan kart bu (kişinin öteki kartları false)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("matched")]
+        public bool Matched { get; set; }
     }
 
     /// <summary>The `ListCustomerCardsItemIdentifiersItem` object.</summary>
@@ -4425,7 +5023,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>earn, redeem, spend, load, …; visit; campaign, automation:&lt;tür&gt;, sequence; issued; verified:phone; changed:email, changed:phone</summary>
+        /// <summary>earn, redeem, spend, load, …; hold, release, refund (online ödeme kodu, ADR 179); visit; campaign, automation:&lt;tür&gt;, sequence; issued; verified:phone; changed:email, changed:phone</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -4887,9 +5485,13 @@ namespace Rewloy.Models
         [JsonPropertyName("name")]
         public string? Name { get; set; }
 
-        /// <summary>`valueMinor`.</summary>
+        /// <summary>Programın para biriminde, kuruş</summary>
         [JsonPropertyName("valueMinor")]
         public int? ValueMinor { get; set; }
+
+        /// <summary>İsteğe bağlı: tutarın para birimi (ISO 4217, ör. `TRY`, `EUR`, büyük-küçük harf önemsiz). Tutar **kartın para birimindedir** (programın para birimi: `GET /v1/passes/{serial}` → `currency`, `GET /v1/programs/{id}`); verilirse onunla karşılaştırılır, farklıysa `422 CURRENCY_MISMATCH` (`details.currency` kartınki) ve hiçbir şey yazılmaz. Tutar çevrilmez.</summary>
+        [JsonPropertyName("currency")]
+        public string? Currency { get; set; }
 
         /// <summary>One of: `once`, `limited`, `unlimited`.</summary>
         [JsonPropertyName("usage")]
@@ -4919,9 +5521,28 @@ namespace Rewloy.Models
         [JsonPropertyName("percent")]
         public int? Percent { get; set; }
 
+        /// <summary>`onlineValue`.</summary>
+        [JsonPropertyName("onlineValue")]
+        public CreateBatchBodyOnlineValue? OnlineValue { get; set; }
+
         /// <summary>Kartların kasada kabul edileceği şubeler (ADR 139); boş ya da yok = programın kuralı. Şube kapsamlı bir kimlik yalnız kendi şubelerini seçebilir.</summary>
         [JsonPropertyName("locationIds")]
         public IReadOnlyList<Guid>? LocationIds { get; set; }
+    }
+
+    /// <summary>The `CreateBatchBodyOnlineValue` object.</summary>
+    public sealed class CreateBatchBodyOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Required.</summary>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
     }
 
     /// <summary>The `CreateBatchData` object.</summary>
@@ -5058,6 +5679,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("outstandingMinor")]
         public double OutstandingMinor { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        public CreateBatchDataOnlineValue? OnlineValue { get; set; }
     }
 
     /// <summary>Bu koddan verilen kartlar, durumlarına göre (pass tablosu) ve toplam kullanım</summary>
@@ -5086,6 +5714,21 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("uses")]
         public int Uses { get; set; }
+    }
+
+    /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+    public sealed class CreateBatchDataOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
     }
 
     /// <summary>The `GetBatchData` object.</summary>
@@ -5222,6 +5865,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("outstandingMinor")]
         public double OutstandingMinor { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        public GetBatchDataOnlineValue? OnlineValue { get; set; }
     }
 
     /// <summary>Bu koddan verilen kartlar, durumlarına göre (pass tablosu) ve toplam kullanım</summary>
@@ -5250,6 +5900,21 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("uses")]
         public int Uses { get; set; }
+    }
+
+    /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+    public sealed class GetBatchDataOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
     }
 
     /// <summary>Query parameters of `listBatchCards`.</summary>
@@ -5295,7 +5960,7 @@ namespace Rewloy.Models
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
 
-        /// <summary>**Kullanımdan kalkıyor:** 5 Nisan 2027 tarihine kadar gelir; yerine `identifiers`. Kartı alanın adresi. Yerine geçen `identifiers` yalnız `customers.read` yetkisiyle gelir.</summary>
+        /// <summary>**Kullanımdan kalkıyor:** 5 Nisan 2027 tarihine kadar gelir; yerine `identifiers`. Kartı alanın adresi; `identifiers` gibi yalnız `customers.read` yetkisiyle ve kimliğin şube kapsamındaki kişiler için gelir, yoksa null (ADR 181). Yerine geçen `identifiers`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -5509,6 +6174,13 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("outstandingMinor")]
         public double OutstandingMinor { get; set; }
+
+        /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("onlineValue")]
+        public CloseBatchDataOnlineValue? OnlineValue { get; set; }
     }
 
     /// <summary>Bu koddan verilen kartlar, durumlarına göre (pass tablosu) ve toplam kullanım</summary>
@@ -5537,6 +6209,21 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("uses")]
         public int Uses { get; set; }
+    }
+
+    /// <summary>Kupon: online mağazada kullanıldığındaki değeri (ADR 179); null = kodun tutarı, yoksa programın `onlineValue`'su, o da yoksa yalnız mağazada</summary>
+    public sealed class CloseBatchDataOnlineValue : RewloyObject
+    {
+        /// <summary>One of: `amount`, `percent`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("value")]
+        public int Value { get; set; }
     }
 
     /// <summary>The `VoidBatchCardBody` object.</summary>
@@ -10688,10 +11375,14 @@ namespace Rewloy.Models
         /// <summary>Tek bir şube (kapsamınız içinde)</summary>
         public Guid? LocationId { get; set; }
 
+        /// <summary>Tek bir program (kapsamınız içinde). Kapsamı programlarla sınırlı bir kimlik (ör. mağaza eklentisinin anahtarı) yalnız kendi programlarını görür; programsız istekte de yalnız onlar sayılır.</summary>
+        public Guid? ProgramId { get; set; }
+
         internal override void WriteTo(QueryWriter writer)
         {
             writer.Add("days", Days);
             writer.Add("locationId", LocationId);
+            writer.Add("programId", ProgramId);
         }
     }
 
@@ -10913,10 +11604,10 @@ namespace Rewloy.Models
         /// <summary>YYYY-AA-GG</summary>
         public string? Day { get; set; }
 
-        /// <summary>One of: `earn`, `redeem`, `spend`, `load`, `accrue`, `visit`, `use`, `issue`, `adjust`, `expire`.</summary>
+        /// <summary>One of: `earn`, `redeem`, `spend`, `load`, `accrue`, `visit`, `use`, `issue`, `adjust`, `expire`, `hold`, `release`, `refund`.</summary>
         public string? Kind { get; set; }
 
-        /// <summary>`programId`.</summary>
+        /// <summary>Tek bir program (kapsamınız içinde). Kapsamı programlarla sınırlı bir kimlik (ör. mağaza eklentisinin anahtarı) yalnız kendi programlarını görür; programsız istekte de yalnız onlar sayılır.</summary>
         public Guid? ProgramId { get; set; }
 
         /// <summary>Kart numarası ya da başı</summary>
@@ -10964,11 +11655,17 @@ namespace Rewloy.Models
         [JsonPropertyName("delta")]
         public double? Delta { get; set; }
 
-        /// <summary>Always present.</summary>
+        /// <summary>`delta`'nın birimi: `stamp` damga, `point` puan, `visit` ziyaret, `try_minor` para (kuruş). `try_minor` donmuş bir addır: Türk lirası demek değildir, `currency` biriminin kuruşudur (ör. EUR işletmede euro sent). Kupon ve indirim kullanımında null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
         [JsonPropertyName("unit")]
         public string? Unit { get; set; }
 
-        /// <summary>Always present.</summary>
+        /// <summary>Para hareketinde `delta`'nın para birimi (programın, yoksa işletmenin; ISO 4217). Damga, puan ve ziyarette de gelir ama yalnız `unit: "try_minor"` iken anlamlıdır; kupon ve indirim kullanımında null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
         [JsonPropertyName("currency")]
         public string? Currency { get; set; }
 
@@ -12339,12 +13036,37 @@ namespace Rewloy.Models
         [JsonPropertyName("lastRefusal")]
         public ListShopsItemLastRefusal? LastRefusal { get; set; }
 
-        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("pluginKey")]
         public ListShopsItemPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public ListShopsItemSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public ListShopsItemAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public ListShopsItemUnbacked Unbacked { get; set; } = default!;
     }
 
     /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
@@ -12378,7 +13100,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.</summary>
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -12401,7 +13123,7 @@ namespace Rewloy.Models
         public string Reason { get; set; } = default!;
     }
 
-    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
     public sealed class ListShopsItemPluginKey : RewloyObject
     {
         /// <summary>Always present.</summary>
@@ -12415,6 +13137,137 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class ListShopsItemSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public ListShopsItemSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class ListShopsItemSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `ListShopsItemAccepts` object.</summary>
+    public sealed class ListShopsItemAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<ListShopsItemAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `ListShopsItemAcceptsCeilingItem` object.</summary>
+    public sealed class ListShopsItemAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class ListShopsItemUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
     }
 
     /// <summary>The `CreateShopBody` object.</summary>
@@ -12540,12 +13393,37 @@ namespace Rewloy.Models
         [JsonPropertyName("lastRefusal")]
         public CreateShopDataLastRefusal? LastRefusal { get; set; }
 
-        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("pluginKey")]
         public CreateShopDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public CreateShopDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public CreateShopDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public CreateShopDataUnbacked Unbacked { get; set; } = default!;
 
         /// <summary>WooCommerce: yalnız bu yanıtta; saklanmaz, yeniden gösterilmez</summary>
         /// <remarks>
@@ -12586,7 +13464,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.</summary>
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -12609,7 +13487,7 @@ namespace Rewloy.Models
         public string Reason { get; set; } = default!;
     }
 
-    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
     public sealed class CreateShopDataPluginKey : RewloyObject
     {
         /// <summary>Always present.</summary>
@@ -12623,6 +13501,137 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class CreateShopDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public CreateShopDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class CreateShopDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `CreateShopDataAccepts` object.</summary>
+    public sealed class CreateShopDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<CreateShopDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `CreateShopDataAcceptsCeilingItem` object.</summary>
+    public sealed class CreateShopDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class CreateShopDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
     }
 
     /// <summary>The `GetShopData` object.</summary>
@@ -12714,12 +13723,37 @@ namespace Rewloy.Models
         [JsonPropertyName("lastRefusal")]
         public GetShopDataLastRefusal? LastRefusal { get; set; }
 
-        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("pluginKey")]
         public GetShopDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public GetShopDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public GetShopDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public GetShopDataUnbacked Unbacked { get; set; } = default!;
     }
 
     /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
@@ -12753,7 +13787,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.</summary>
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -12776,7 +13810,7 @@ namespace Rewloy.Models
         public string Reason { get; set; } = default!;
     }
 
-    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
     public sealed class GetShopDataPluginKey : RewloyObject
     {
         /// <summary>Always present.</summary>
@@ -12790,6 +13824,137 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class GetShopDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public GetShopDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class GetShopDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `GetShopDataAccepts` object.</summary>
+    public sealed class GetShopDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<GetShopDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `GetShopDataAcceptsCeilingItem` object.</summary>
+    public sealed class GetShopDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class GetShopDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
     }
 
     /// <summary>The `SetShopEnabledBody` object.</summary>
@@ -12889,12 +14054,37 @@ namespace Rewloy.Models
         [JsonPropertyName("lastRefusal")]
         public SetShopEnabledDataLastRefusal? LastRefusal { get; set; }
 
-        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("pluginKey")]
         public SetShopEnabledDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public SetShopEnabledDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public SetShopEnabledDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public SetShopEnabledDataUnbacked Unbacked { get; set; } = default!;
     }
 
     /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
@@ -12928,7 +14118,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.</summary>
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -12951,7 +14141,7 @@ namespace Rewloy.Models
         public string Reason { get; set; } = default!;
     }
 
-    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
     public sealed class SetShopEnabledDataPluginKey : RewloyObject
     {
         /// <summary>Always present.</summary>
@@ -12965,6 +14155,137 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class SetShopEnabledDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public SetShopEnabledDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class SetShopEnabledDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `SetShopEnabledDataAccepts` object.</summary>
+    public sealed class SetShopEnabledDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<SetShopEnabledDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `SetShopEnabledDataAcceptsCeilingItem` object.</summary>
+    public sealed class SetShopEnabledDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class SetShopEnabledDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
     }
 
     /// <summary>Query parameters of `listShopOrders`.</summary>
@@ -13058,6 +14379,27 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdBy")]
         public string? CreatedBy { get; set; }
+
+        /// <summary>Kurulacak anahtar Görüntüleme yetkisini alır mı (ADR 178)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("view")]
+        public bool View { get; set; }
+
+        /// <summary>Kurulacak anahtarın kasası bu şubede açılır; null = kasa kapalı (ADR 178)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
     }
 
     /// <summary>The `CreateShopConnectTokenBody` object.</summary>
@@ -13085,6 +14427,18 @@ namespace Rewloy.Models
         /// <summary>Required.</summary>
         [JsonPropertyName("password")]
         public string Password { get; set; } = default!;
+
+        /// <summary>Görüntüleme: kartlar, durumları, programın sayıları ve son işlemleri. Gönderilmezse kapalı (ADR 178'in incelemesi): eski istemcinin anahtarı eskisi gibi kalır</summary>
+        [JsonPropertyName("view")]
+        public bool? View { get; set; }
+
+        /// <summary>Kasa: bu şubenin kasası; gönderilmezse ya da null ise kasa kapalı</summary>
+        /// <remarks>
+        /// <para>`Optional&lt;T&gt;` tells a left-out field from an explicit `null`: set `Optional&lt;T&gt;.Null` to send `null`.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public Optional<Guid> TillLocationId { get; set; }
     }
 
     /// <summary>The `CreateShopConnectTokenData` object.</summary>
@@ -13131,6 +14485,27 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdBy")]
         public string? CreatedBy { get; set; }
+
+        /// <summary>Kurulacak anahtar Görüntüleme yetkisini alır mı (ADR 178)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("view")]
+        public bool View { get; set; }
+
+        /// <summary>Kurulacak anahtarın kasası bu şubede açılır; null = kasa kapalı (ADR 178)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
 
         /// <summary>Eklentiye yapıştırılacak kod: yalnız bu yanıtta; saklanmaz, yeniden gösterilmez.</summary>
         /// <remarks>
@@ -13267,12 +14642,37 @@ namespace Rewloy.Models
         [JsonPropertyName("lastRefusal")]
         public ConnectShopDataShopLastRefusal? LastRefusal { get; set; }
 
-        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("pluginKey")]
         public ConnectShopDataShopPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public ConnectShopDataShopSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public ConnectShopDataShopAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public ConnectShopDataShopUnbacked Unbacked { get; set; } = default!;
     }
 
     /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
@@ -13306,7 +14706,7 @@ namespace Rewloy.Models
         [JsonPropertyName("at")]
         public DateTimeOffset At { get; set; }
 
-        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`.</summary>
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
         /// <remarks>
         /// <para>Always present.</para>
         /// </remarks>
@@ -13329,7 +14729,7 @@ namespace Rewloy.Models
         public string Reason { get; set; } = default!;
     }
 
-    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı; yoksa null. Bağlantı silinince anahtar da iptal edilir.</summary>
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
     public sealed class ConnectShopDataShopPluginKey : RewloyObject
     {
         /// <summary>Always present.</summary>
@@ -13343,6 +14743,137 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("name")]
         public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class ConnectShopDataShopSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public ConnectShopDataShopSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class ConnectShopDataShopSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `ConnectShopDataShopAccepts` object.</summary>
+    public sealed class ConnectShopDataShopAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<ConnectShopDataShopAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `ConnectShopDataShopAcceptsCeilingItem` object.</summary>
+    public sealed class ConnectShopDataShopAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class ConnectShopDataShopUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
     }
 
     /// <summary>The `ConnectShopDataApiKey` object.</summary>
@@ -13370,6 +14901,2693 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("token")]
         public string Token { get; set; } = default!;
+
+        /// <summary>Kodu alan kişinin seçtiği yetkiler (ADR 178): `view`, `till`</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi (işlemlerde `locationId`); değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+    }
+
+    /// <summary>The `SetShopPluginAbilitiesBody` object.</summary>
+    public sealed class SetShopPluginAbilitiesBody : RewloyObject
+    {
+        /// <summary>Required.</summary>
+        [JsonPropertyName("view")]
+        public bool View { get; set; }
+
+        /// <summary>Kasanın şubesi; null = kasa kapalı</summary>
+        /// <remarks>
+        /// <para>`Optional&lt;T&gt;` tells a left-out field from an explicit `null`: set `Optional&lt;T&gt;.Null` to send `null`.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public Optional<Guid> TillLocationId { get; set; }
+
+        /// <summary>Neden (yalnız ekibiniz görür)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+
+        /// <summary>Required.</summary>
+        [JsonPropertyName("password")]
+        public string Password { get; set; } = default!;
+    }
+
+    /// <summary>The `SetShopPluginAbilitiesData` object.</summary>
+    public sealed class SetShopPluginAbilitiesData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>One of: `shopify`, `woocommerce`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("platform")]
+        public string Platform { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programType")]
+        public string ProgramType { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>order: her sipariş · amount: her `perAmountMinor` tutar için</summary>
+        /// <remarks>
+        /// <para>One of: `order`, `amount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("rule")]
+        public string Rule { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("perAmountMinor")]
+        public long PerAmountMinor { get; set; }
+
+        /// <summary>Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("step")]
+        public int Step { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastOrderAt")]
+        public DateTimeOffset? LastOrderAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Mağazanızın sipariş bildirimini göndereceği adres</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("webhookUrl")]
+        public string WebhookUrl { get; set; } = default!;
+
+        /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("orders")]
+        public SetShopPluginAbilitiesDataOrders Orders { get; set; } = default!;
+
+        /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastDelivery")]
+        public SetShopPluginAbilitiesDataLastDelivery? LastDelivery { get; set; }
+
+        /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastRefusal")]
+        public SetShopPluginAbilitiesDataLastRefusal? LastRefusal { get; set; }
+
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pluginKey")]
+        public SetShopPluginAbilitiesDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public SetShopPluginAbilitiesDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public SetShopPluginAbilitiesDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public SetShopPluginAbilitiesDataUnbacked Unbacked { get; set; } = default!;
+    }
+
+    /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+    public sealed class SetShopPluginAbilitiesDataOrders : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("credited")]
+        public int Credited { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("unmatched")]
+        public int Unmatched { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("below")]
+        public int Below { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("paused")]
+        public int Paused { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public int Currency { get; set; }
+    }
+
+    /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+    public sealed class SetShopPluginAbilitiesDataLastDelivery : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("result")]
+        public string Result { get; set; } = default!;
+    }
+
+    /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+    public sealed class SetShopPluginAbilitiesDataLastRefusal : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `bad_signature`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+    }
+
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+    public sealed class SetShopPluginAbilitiesDataPluginKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class SetShopPluginAbilitiesDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public SetShopPluginAbilitiesDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class SetShopPluginAbilitiesDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `SetShopPluginAbilitiesDataAccepts` object.</summary>
+    public sealed class SetShopPluginAbilitiesDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<SetShopPluginAbilitiesDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `SetShopPluginAbilitiesDataAcceptsCeilingItem` object.</summary>
+    public sealed class SetShopPluginAbilitiesDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class SetShopPluginAbilitiesDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
+    }
+
+    /// <summary>The `QuoteCheckoutCodeBody` object.</summary>
+    public sealed class QuoteCheckoutCodeBody : RewloyObject
+    {
+        /// <summary>Müşterinin yazdığı kod: `RW-XXXX-XXXX` (büyük/küçük harf, boşluk ve tire fark etmez)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = default!;
+
+        /// <summary>Siparişin para birimi (ISO 4217, örn. TRY)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>İsteğe bağlı: alışverişçinin kişisel veri taşımayan anahtarı (ör. WooCommerce oturumunun HMAC'i); kendi soru bütçesi olur</summary>
+        [JsonPropertyName("shopper")]
+        public string? Shopper { get; set; }
+
+        /// <summary>İsteğe bağlı: kodu soran sipariş. Kod bu siparişteyse `CODE_USED` yerine bu siparişin kullanımı döner (ADR 180).</summary>
+        [JsonPropertyName("orderId")]
+        public string? OrderId { get; set; }
+    }
+
+    /// <summary>The `QuoteCheckoutCodeData` object.</summary>
+    public sealed class QuoteCheckoutCodeData : RewloyObject
+    {
+        /// <summary>One of: `balance`, `percent`, `amount`, `link`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("maxMinor")]
+        public long? MaxMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("amountMinor")]
+        public long? AmountMinor { get; set; }
+
+        /// <summary>One of: `payment`, `discount`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public string? Tax { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("cardId")]
+        public string CardId { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("firstUseBy")]
+        public DateTimeOffset FirstUseBy { get; set; }
+
+        /// <summary>Kodun bir siparişe bağlanabileceği son an</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("attachBy")]
+        public DateTimeOffset AttachBy { get; set; }
+
+        /// <summary>Yalnız `orderId` gönderildiyse: bu siparişin bu koddaki kullanımı; kod bu siparişin değilse null</summary>
+        [JsonPropertyName("redemption")]
+        public QuoteCheckoutCodeDataRedemption? Redemption { get; set; }
+    }
+
+    /// <summary>Yalnız `orderId` gönderildiyse: bu siparişin bu koddaki kullanımı; kod bu siparişin değilse null</summary>
+    public sealed class QuoteCheckoutCodeDataRedemption : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `ListOrderRedemptionsItem` object.</summary>
+    public sealed class ListOrderRedemptionsItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `HoldCheckoutCodeBody` object.</summary>
+    public sealed class HoldCheckoutCodeBody : RewloyObject
+    {
+        /// <summary>Müşterinin yazdığı kod: `RW-XXXX-XXXX` (büyük/küçük harf, boşluk ve tire fark etmez)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = default!;
+
+        /// <summary>Siparişin para birimi (ISO 4217, örn. TRY)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>`amountMinor`.</summary>
+        [JsonPropertyName("amountMinor")]
+        public int? AmountMinor { get; set; }
+
+        /// <summary>Siparişin indirimden önceki toplamı (kuruş); verilirse amountMinor onu aşamaz</summary>
+        [JsonPropertyName("orderTotalMinor")]
+        public int? OrderTotalMinor { get; set; }
+    }
+
+    /// <summary>The `HoldCheckoutCodeData` object.</summary>
+    public sealed class HoldCheckoutCodeData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `CaptureCheckoutOrderBody` object.</summary>
+    public sealed class CaptureCheckoutOrderBody : RewloyObject
+    {
+        /// <summary>`captures`.</summary>
+        [JsonPropertyName("captures")]
+        public IReadOnlyList<CaptureCheckoutOrderBodyCapturesItem>? Captures { get; set; }
+    }
+
+    /// <summary>The `CaptureCheckoutOrderBodyCapturesItem` object.</summary>
+    public sealed class CaptureCheckoutOrderBodyCapturesItem : RewloyObject
+    {
+        /// <summary>Required.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Required.</summary>
+        [JsonPropertyName("amountMinor")]
+        public int AmountMinor { get; set; }
+    }
+
+    /// <summary>The `CaptureCheckoutOrderItem` object.</summary>
+    public sealed class CaptureCheckoutOrderItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `ReleaseCheckoutOrderBody` object.</summary>
+    public sealed class ReleaseCheckoutOrderBody : RewloyObject
+    {
+        /// <summary>One of: `cancelled`, `failed`, `shop`.</summary>
+        [JsonPropertyName("reason")]
+        public string? Reason { get; set; }
+    }
+
+    /// <summary>The `ReleaseCheckoutOrderItem` object.</summary>
+    public sealed class ReleaseCheckoutOrderItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `RefundCheckoutOrderBody` object.</summary>
+    public sealed class RefundCheckoutOrderBody : RewloyObject
+    {
+        /// <summary>`amountMinor`.</summary>
+        [JsonPropertyName("amountMinor")]
+        public int? AmountMinor { get; set; }
+
+        /// <summary>`redemptionId`.</summary>
+        [JsonPropertyName("redemptionId")]
+        public Guid? RedemptionId { get; set; }
+    }
+
+    /// <summary>The `RefundCheckoutOrderData` object.</summary>
+    public sealed class RefundCheckoutOrderData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("redemptions")]
+        public IReadOnlyList<RefundCheckoutOrderDataRedemptionsItem> Redemptions { get; set; } = Array.Empty<RefundCheckoutOrderDataRedemptionsItem>();
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("unearned")]
+        public RefundCheckoutOrderDataUnearned? Unearned { get; set; }
+    }
+
+    /// <summary>The `RefundCheckoutOrderDataRedemptionsItem` object.</summary>
+    public sealed class RefundCheckoutOrderDataRedemptionsItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `RefundCheckoutOrderDataUnearned` object.</summary>
+    public sealed class RefundCheckoutOrderDataUnearned : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>stamp, point, visit ya da try_minor (kuruş)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unit")]
+        public string Unit { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("earned")]
+        public long Earned { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("reversed")]
+        public long Reversed { get; set; }
+
+        /// <summary>Kartta kalmadığı için geri alınamayan kısım</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("short")]
+        public long Short { get; set; }
+    }
+
+    /// <summary>Query parameters of `listShopRedemptions`.</summary>
+    public sealed class ListShopRedemptionsQuery : RewloyQuery
+    {
+        /// <summary>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</summary>
+        public string? State { get; set; }
+
+        /// <summary>`page`.</summary>
+        public int? Page { get; set; }
+
+        /// <summary>`limit`.</summary>
+        public int? Limit { get; set; }
+
+        internal override void WriteTo(QueryWriter writer)
+        {
+            writer.Add("state", State);
+            writer.Add("page", Page);
+            writer.Add("limit", Limit);
+        }
+
+        /// <summary>A copy of these parameters asking for another page.</summary>
+        internal ListShopRedemptionsQuery ForPage(long page)
+        {
+            var copy = (ListShopRedemptionsQuery)MemberwiseClone();
+            copy.Page = checked((int)page);
+            return copy;
+        }
+    }
+
+    /// <summary>The `ListShopRedemptionsItem` object.</summary>
+    public sealed class ListShopRedemptionsItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `ReleaseShopRedemptionBody` object.</summary>
+    public sealed class ReleaseShopRedemptionBody : RewloyObject
+    {
+        /// <summary>Neden (kayda geçer, defter kaydının notu olur)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+    }
+
+    /// <summary>The `ReleaseShopRedemptionData` object.</summary>
+    public sealed class ReleaseShopRedemptionData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `RefundShopRedemptionBody` object.</summary>
+    public sealed class RefundShopRedemptionBody : RewloyObject
+    {
+        /// <summary>Required.</summary>
+        [JsonPropertyName("amountMinor")]
+        public int AmountMinor { get; set; }
+
+        /// <summary>Neden (kayda geçer, defter kaydının notu olur)</summary>
+        /// <remarks>
+        /// <para>Required.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+    }
+
+    /// <summary>The `RefundShopRedemptionData` object.</summary>
+    public sealed class RefundShopRedemptionData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = default!;
+
+        /// <summary>Kodun son 4 karakteri (sipariş notu için)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("codeLast4")]
+        public string CodeLast4 { get; set; } = default!;
+
+        /// <summary>Kartın bu mağazaya özel, opak kimliği: bir siparişteki kodların aynı karta ait olup olmadığını karşılaştırmak için; başka bir şey söylemez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardId")]
+        public string? CardId { get; set; }
+
+        /// <summary>Kart numarasının son 4 karakteri; seri numarası mağazaya verilmez</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cardLast4")]
+        public string CardLast4 { get; set; } = default!;
+
+        /// <summary>balance: bakiye (hediye kartı, cashback) · percent: yüzde indirim · amount: kuponun tutarı · link: değer yok, sipariş bu karta işlenir (damga, puan, VIP)</summary>
+        /// <remarks>
+        /// <para>One of: `balance`, `percent`, `amount`, `link`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>balance: ayrılan tutar; amount/percent: siparişe uygulanan indirim (bilgi için); link: 0</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>held ayrıldı · captured düşüldü · released bırakıldı · expired süresi dolup bırakıldı · refunded iade edildi · unbacked karşılıksız (ayırma bittikten sonra ödendi, kartta değer kalmamıştı)</summary>
+        /// <remarks>
+        /// <para>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Aynı sipariş aynı kodu bıraktıktan sonra yeniden ayırdıkça artar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("generation")]
+        public int Generation { get; set; }
+
+        /// <summary>Ayrılmışken: ödenmezse tutarın karta döneceği an (bağlantının bekletme süresi)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedMinor")]
+        public long CapturedMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refundedMinor")]
+        public long RefundedMinor { get; set; }
+
+        /// <summary>Ayırmanın süresi dolduktan sonra düşüldü (ya da karşılıksız kaldı)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("late")]
+        public bool Late { get; set; }
+
+        /// <summary>One of: `cancelled`, `failed`, `expired`, `merchant`, `shop`, null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capturedAt")]
+        public DateTimeOffset? CapturedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("releasedAt")]
+        public DateTimeOffset? ReleasedAt { get; set; }
+    }
+
+    /// <summary>The `SetShopSettingsBody` object.</summary>
+    public sealed class SetShopSettingsBody : RewloyObject
+    {
+        /// <summary>`tax`.</summary>
+        [JsonPropertyName("tax")]
+        public SetShopSettingsBodyTax? Tax { get; set; }
+
+        /// <summary>One of: `code_orders`, `all`, `never`.</summary>
+        [JsonPropertyName("refundReverses")]
+        public string? RefundReverses { get; set; }
+
+        /// <summary>`holdDays`.</summary>
+        [JsonPropertyName("holdDays")]
+        public int? HoldDays { get; set; }
+
+        /// <summary>`accepts`.</summary>
+        [JsonPropertyName("accepts")]
+        public SetShopSettingsBodyAccepts? Accepts { get; set; }
+    }
+
+    /// <summary>The `SetShopSettingsBodyTax` object.</summary>
+    public sealed class SetShopSettingsBodyTax : RewloyObject
+    {
+        /// <summary>One of: `payment`, `discount`.</summary>
+        [JsonPropertyName("giftcard")]
+        public string? Giftcard { get; set; }
+
+        /// <summary>One of: `payment`, `discount`.</summary>
+        [JsonPropertyName("cashback")]
+        public string? Cashback { get; set; }
+
+        /// <summary>One of: `payment`, `discount`.</summary>
+        [JsonPropertyName("voucher")]
+        public string? Voucher { get; set; }
+    }
+
+    /// <summary>The `SetShopSettingsBodyAccepts` object.</summary>
+    public sealed class SetShopSettingsBodyAccepts : RewloyObject
+    {
+        /// <summary>Required.</summary>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+    }
+
+    /// <summary>The `SetShopSettingsData` object.</summary>
+    public sealed class SetShopSettingsData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>One of: `shopify`, `woocommerce`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("platform")]
+        public string Platform { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programType")]
+        public string ProgramType { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>order: her sipariş · amount: her `perAmountMinor` tutar için</summary>
+        /// <remarks>
+        /// <para>One of: `order`, `amount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("rule")]
+        public string Rule { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("perAmountMinor")]
+        public long PerAmountMinor { get; set; }
+
+        /// <summary>Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("step")]
+        public int Step { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastOrderAt")]
+        public DateTimeOffset? LastOrderAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Mağazanızın sipariş bildirimini göndereceği adres</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("webhookUrl")]
+        public string WebhookUrl { get; set; } = default!;
+
+        /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("orders")]
+        public SetShopSettingsDataOrders Orders { get; set; } = default!;
+
+        /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastDelivery")]
+        public SetShopSettingsDataLastDelivery? LastDelivery { get; set; }
+
+        /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastRefusal")]
+        public SetShopSettingsDataLastRefusal? LastRefusal { get; set; }
+
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pluginKey")]
+        public SetShopSettingsDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public SetShopSettingsDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public SetShopSettingsDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public SetShopSettingsDataUnbacked Unbacked { get; set; } = default!;
+    }
+
+    /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+    public sealed class SetShopSettingsDataOrders : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("credited")]
+        public int Credited { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("unmatched")]
+        public int Unmatched { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("below")]
+        public int Below { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("paused")]
+        public int Paused { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public int Currency { get; set; }
+    }
+
+    /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+    public sealed class SetShopSettingsDataLastDelivery : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("result")]
+        public string Result { get; set; } = default!;
+    }
+
+    /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+    public sealed class SetShopSettingsDataLastRefusal : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `bad_signature`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+    }
+
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+    public sealed class SetShopSettingsDataPluginKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class SetShopSettingsDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public SetShopSettingsDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class SetShopSettingsDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `SetShopSettingsDataAccepts` object.</summary>
+    public sealed class SetShopSettingsDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<SetShopSettingsDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `SetShopSettingsDataAcceptsCeilingItem` object.</summary>
+    public sealed class SetShopSettingsDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class SetShopSettingsDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
+    }
+
+    /// <summary>The `SetShopCeilingBody` object.</summary>
+    public sealed class SetShopCeilingBody : RewloyObject
+    {
+        /// <summary>Required.</summary>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+    }
+
+    /// <summary>The `SetShopCeilingData` object.</summary>
+    public sealed class SetShopCeilingData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>One of: `shopify`, `woocommerce`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("platform")]
+        public string Platform { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programId")]
+        public Guid ProgramId { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programName")]
+        public string ProgramName { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("programType")]
+        public string ProgramType { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>order: her sipariş · amount: her `perAmountMinor` tutar için</summary>
+        /// <remarks>
+        /// <para>One of: `order`, `amount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("rule")]
+        public string Rule { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("perAmountMinor")]
+        public long PerAmountMinor { get; set; }
+
+        /// <summary>Her seferinde eklenen damga/puan/ziyaret (cashback kartında tutar oranla hesaplanır)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("step")]
+        public int Step { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("enabled")]
+        public bool Enabled { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastOrderAt")]
+        public DateTimeOffset? LastOrderAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Mağazanızın sipariş bildirimini göndereceği adres</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("webhookUrl")]
+        public string WebhookUrl { get; set; } = default!;
+
+        /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("orders")]
+        public SetShopCeilingDataOrders Orders { get; set; } = default!;
+
+        /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastDelivery")]
+        public SetShopCeilingDataLastDelivery? LastDelivery { get; set; }
+
+        /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("lastRefusal")]
+        public SetShopCeilingDataLastRefusal? LastRefusal { get; set; }
+
+        /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pluginKey")]
+        public SetShopCeilingDataPluginKey? PluginKey { get; set; }
+
+        /// <summary>Mağazanın adı (eklenti bağlanırken gönderdi): kart sahibi bir kodun nerede kullanıldığını bu adla görür. Yoksa null.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("shopName")]
+        public string? ShopName { get; set; }
+
+        /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("settings")]
+        public SetShopCeilingDataSettings Settings { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("accepts")]
+        public SetShopCeilingDataAccepts Accepts { get; set; } = default!;
+
+        /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("unbacked")]
+        public SetShopCeilingDataUnbacked Unbacked { get; set; } = default!;
+    }
+
+    /// <summary>Kayıtlı siparişler sonucuna göre: credited işlendi · unmatched e-postası müşteriyle eşleşmedi · below eşiğin altında · paused bağlantı kapalıyken · currency para birimi farklı</summary>
+    public sealed class SetShopCeilingDataOrders : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("credited")]
+        public int Credited { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("unmatched")]
+        public int Unmatched { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("below")]
+        public int Below { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("paused")]
+        public int Paused { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public int Currency { get; set; }
+    }
+
+    /// <summary>Mağazadan gelen son İMZALI istek: ne zaman ve ne oldu (credited işlendi · unmatched kartı yok · below eşiğin altında · paused bağlantı kapalıyken · currency başka para birimi · duplicate zaten kayıtlı siparişin tekrarı · ignored henüz ödenmemiş sipariş (kaydedilmez) · no_id sipariş numarası yok · bad_body gövde JSON değil). Hiç gelmediyse null.</summary>
+    public sealed class SetShopCeilingDataLastDelivery : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `credited`, `unmatched`, `below`, `paused`, `currency`, `duplicate`, `ignored`, `no_id`, `bad_body`, `cancelled`, `refunded`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("result")]
+        public string Result { get; set; } = default!;
+    }
+
+    /// <summary>Bu adrese gelen ve imzası tutmadığı için reddedilen son istek (dakikada en çok bir kez yazılır). Sık görünüyorsa mağazadaki gizli anahtar bu bağlantınınki değildir. Hiç olmadıysa null.</summary>
+    public sealed class SetShopCeilingDataLastRefusal : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
+
+        /// <summary>One of: `bad_signature`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = default!;
+    }
+
+    /// <summary>Bağlantı koduyla kurulduysa (`POST /v1/shops/connect`) eklentinin yalnız bu bağlantıya bağlı, etkin API anahtarı ve yetkileri; yoksa null. Bağlantı silinince anahtar da iptal edilir. Yetkiler `PUT /v1/shops/{id}/plugin-abilities` ile değişir.</summary>
+    public sealed class SetShopCeilingDataPluginKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>Anahtarın bağlantının dışında yapabildikleri (ADR 178): `view` Görüntüleme (kartlar, durumları, programın sayıları ve son işlemleri; kişisel veri yok), `till` Kasa (tek bir şubede)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("abilities")]
+        public IReadOnlyList<string> Abilities { get; set; } = Array.Empty<string>();
+
+        /// <summary>Kasa açıksa şubesi; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationId")]
+        public Guid? TillLocationId { get; set; }
+
+        /// <summary>Kasanın şubesinin adı; değilse null</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillLocationName")]
+        public string? TillLocationName { get; set; }
+
+        /// <summary>Kasanın şubesi arşivlendi: kasa orada çalışmaz ve `abilities` içinde `till` yoktur; başka bir şube seçilene kadar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tillArchived")]
+        public bool TillArchived { get; set; }
+    }
+
+    /// <summary>Ödeme adımındaki kart kodlarının ayarları (ADR 179). `PATCH /v1/shops/{id}/settings` değiştirir.</summary>
+    public sealed class SetShopCeilingDataSettings : RewloyObject
+    {
+        /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("tax")]
+        public SetShopCeilingDataSettingsTax Tax { get; set; } = default!;
+
+        /// <summary>İade edilen siparişin kazancı: `code_orders` (varsayılan) yalnız Rewloy kodu kullanılan siparişlerde geri alınır, `all` her iade edilen siparişte, `never` hiçbirinde. Hiçbir zaman sıfırın altına inmez.</summary>
+        /// <remarks>
+        /// <para>One of: `code_orders`, `all`, `never`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("refundReverses")]
+        public string RefundReverses { get; set; } = default!;
+
+        /// <summary>Bekletme süresi: ödenmeyen bir siparişin ayırdığı tutar en geç bu kadar gün sonra karta döner (varsayılan 7)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("holdDays")]
+        public int HoldDays { get; set; }
+    }
+
+    /// <summary>Kart değerinin siparişe nasıl uygulanacağı; eklenti uygular. Hangisinin doğru olduğu muhasebecinizin kararıdır.</summary>
+    public sealed class SetShopCeilingDataSettingsTax : RewloyObject
+    {
+        /// <summary>Hediye kartı: `payment` (varsayılan) vergiden sonra, ödeme gibi — KDV değişmez; `discount` vergiden önce kupon gibi — KDV matrahı düşer</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("giftcard")]
+        public string Giftcard { get; set; } = default!;
+
+        /// <summary>Cashback: `discount` (varsayılan) ya da `payment`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("cashback")]
+        public string Cashback { get; set; } = default!;
+
+        /// <summary>Tutarlı kupon: `discount` (varsayılan) ya da `payment`. Yüzdelik indirim her zaman `discount`</summary>
+        /// <remarks>
+        /// <para>One of: `payment`, `discount`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("voucher")]
+        public string Voucher { get; set; } = default!;
+    }
+
+    /// <summary>The `SetShopCeilingDataAccepts` object.</summary>
+    public sealed class SetShopCeilingDataAccepts : RewloyObject
+    {
+        /// <summary>İşletmenin bu mağazada kodu kabul edilen DİĞER programları (açık olanlar). Bağlantının kendi programı her zaman kabul edilir ve burada yer almaz.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("programIds")]
+        public IReadOnlyList<Guid> ProgramIds { get; set; } = Array.Empty<Guid>();
+
+        /// <summary>Eklentinin anahtarının açabileceği programlar (tavan, `PUT /v1/shops/{id}/ceiling`), her biri adı ve türüyle: eklentinin anahtarı yalnız kendi programını okuyabildiği için adları buradan alır (adlar işletmenin kendi adlarıdır). Eklentinin anahtarı yoksa null: o zaman kodu kullanan kimliğin kendi yetkileri karar verir.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("ceiling")]
+        public IReadOnlyList<SetShopCeilingDataAcceptsCeilingItem>? Ceiling { get; set; }
+    }
+
+    /// <summary>The `SetShopCeilingDataAcceptsCeilingItem` object.</summary>
+    public sealed class SetShopCeilingDataAcceptsCeilingItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        /// <summary>One of: `stamp`, `points`, `discount`, `vip`, `giftcard`, `voucher`, `cashback`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = default!;
+    }
+
+    /// <summary>Karşılıksız kalan kod kullanımları: ayırmanın süresi dolduktan sonra ödenen ve kartta artık yetecek değer bulunmayan siparişler (`GET /v1/shops/{id}/redemptions?state=unbacked`).</summary>
+    public sealed class SetShopCeilingDataUnbacked : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("lastAt")]
+        public DateTimeOffset? LastAt { get; set; }
+    }
+
+    /// <summary>The `HolderCheckoutCodesData` object.</summary>
+    public sealed class HolderCheckoutCodesData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("online")]
+        public bool Online { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("offer")]
+        public HolderCheckoutCodesDataOffer? Offer { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("refusal")]
+        public string? Refusal { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("holds")]
+        public IReadOnlyList<HolderCheckoutCodesDataHoldsItem> Holds { get; set; } = Array.Empty<HolderCheckoutCodesDataHoldsItem>();
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("codes")]
+        public IReadOnlyList<HolderCheckoutCodesDataCodesItem> Codes { get; set; } = Array.Empty<HolderCheckoutCodesDataCodesItem>();
+    }
+
+    /// <summary>The `HolderCheckoutCodesDataOffer` object.</summary>
+    public sealed class HolderCheckoutCodesDataOffer : RewloyObject
+    {
+        /// <summary>One of: `balance`, `percent`, `amount`, `link`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("maxMinor")]
+        public long? MaxMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("amountMinor")]
+        public long? AmountMinor { get; set; }
+
+        /// <summary>Kupon ve indirim kartı: kullanım hakkı sınırlıysa kalan hak (açık ayırmalar düşülmüş); sınırsızsa ve diğer kartlarda null. 1 ise kod son hakkı ayırır.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("usesLeft")]
+        public int? UsesLeft { get; set; }
+    }
+
+    /// <summary>The `HolderCheckoutCodesDataHoldsItem` object.</summary>
+    public sealed class HolderCheckoutCodesDataHoldsItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset HeldUntil { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("shop")]
+        public string Shop { get; set; } = default!;
+    }
+
+    /// <summary>The `HolderCheckoutCodesDataCodesItem` object.</summary>
+    public sealed class HolderCheckoutCodesDataCodesItem : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("last4")]
+        public string Last4 { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("capMinor")]
+        public long? CapMinor { get; set; }
+
+        /// <summary>open kullanılabilir · attached bir siparişe bağlandı · expired süresi doldu · cancelled iptal edildi</summary>
+        /// <remarks>
+        /// <para>One of: `open`, `attached`, `expired`, `cancelled`.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("firstUseBy")]
+        public DateTimeOffset FirstUseBy { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("attachBy")]
+        public DateTimeOffset AttachBy { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("createdAt")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("order")]
+        public HolderCheckoutCodesDataCodesItemOrder? Order { get; set; }
+    }
+
+    /// <summary>The `HolderCheckoutCodesDataCodesItemOrder` object.</summary>
+    public sealed class HolderCheckoutCodesDataCodesItemOrder : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("shop")]
+        public string Shop { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("amountMinor")]
+        public long AmountMinor { get; set; }
+
+        /// <summary>One of: `held`, `captured`, `released`, `expired`, `refunded`, `unbacked`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("state")]
+        public string State { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("heldUntil")]
+        public DateTimeOffset? HeldUntil { get; set; }
+
+        /// <summary>One of: `balance`, `percent`, `amount`, `link`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Bırakılan ya da süresi dolan ayırmada kimin ya da neyin bıraktığı: cancelled mağaza siparişi iptal etti · failed ödeme tamamlanmadı · shop mağaza bıraktı · merchant işletme elle bıraktı · expired süre doldu</summary>
+        /// <remarks>
+        /// <para>One of: `cancelled`, `failed`, `shop`, `merchant`, `expired`, null.</para>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("releaseReason")]
+        public string? ReleaseReason { get; set; }
+    }
+
+    /// <summary>The `MintHolderCheckoutCodeBody` object.</summary>
+    public sealed class MintHolderCheckoutCodeBody : RewloyObject
+    {
+        /// <summary>`amountMinor`.</summary>
+        [JsonPropertyName("amountMinor")]
+        public int? AmountMinor { get; set; }
+    }
+
+    /// <summary>The `MintHolderCheckoutCodeData` object.</summary>
+    public sealed class MintHolderCheckoutCodeData : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Kod: yalnız bu yanıtta; Rewloy saklamaz. Kişiye gösterin, "Kopyala" ile verin; günlüğe, adrese ya da bildirime yazmayın.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = default!;
+
+        /// <summary>Bakiyeli kartta kodun en fazla düşebileceği tutar</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("capMinor")]
+        public long? CapMinor { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("currency")]
+        public string Currency { get; set; } = default!;
+
+        /// <summary>One of: `balance`, `percent`, `amount`, `link`.</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("percent")]
+        public int? Percent { get; set; }
+
+        /// <summary>Kupon: online tutarı</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("amountMinor")]
+        public long? AmountMinor { get; set; }
+
+        /// <summary>Kod bu ana kadar ödeme adımında kullanılmaya başlanmalı (15 dakika)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("firstUseBy")]
+        public DateTimeOffset FirstUseBy { get; set; }
+
+        /// <summary>Kullanılmaya başlanan kod bu ana kadar bir siparişe bağlanmalı (45 dakika)</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("attachBy")]
+        public DateTimeOffset AttachBy { get; set; }
     }
 
     /// <summary>The `ListTeamData` object.</summary>
@@ -14401,6 +18619,13 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("lastDelivered")]
         public DateTimeOffset? LastDelivered { get; set; }
+
+        /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("createdByKey")]
+        public ListWebhooksItemCreatedByKey? CreatedByKey { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -14417,6 +18642,18 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("pending")]
         public int Pending { get; set; }
+    }
+
+    /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+    public sealed class ListWebhooksItemCreatedByKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
     }
 
     /// <summary>The `CreateWebhookBody` object.</summary>
@@ -14493,6 +18730,13 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("lastDelivered")]
         public DateTimeOffset? LastDelivered { get; set; }
+
+        /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("createdByKey")]
+        public CreateWebhookDataWebhookCreatedByKey? CreatedByKey { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -14509,6 +18753,18 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("pending")]
         public int Pending { get; set; }
+    }
+
+    /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+    public sealed class CreateWebhookDataWebhookCreatedByKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
     }
 
     /// <summary>The `GetWebhookData` object.</summary>
@@ -14558,6 +18814,13 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("lastDelivered")]
         public DateTimeOffset? LastDelivered { get; set; }
+
+        /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("createdByKey")]
+        public GetWebhookDataCreatedByKey? CreatedByKey { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -14574,6 +18837,18 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("pending")]
         public int Pending { get; set; }
+    }
+
+    /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+    public sealed class GetWebhookDataCreatedByKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
     }
 
     /// <summary>The `SetWebhookStatusBody` object.</summary>
@@ -14631,6 +18906,13 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("lastDelivered")]
         public DateTimeOffset? LastDelivered { get; set; }
+
+        /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("createdByKey")]
+        public SetWebhookStatusDataCreatedByKey? CreatedByKey { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -14647,6 +18929,18 @@ namespace Rewloy.Models
         /// <summary>Always present.</summary>
         [JsonPropertyName("pending")]
         public int Pending { get; set; }
+    }
+
+    /// <summary>Webhook'u ekleyen API anahtarı; bir kişi eklediyse null. Anahtar kaldırılınca, süresi dolunca ya da olayları okuyamaz olunca webhook kendiliğinden kapanır (`disabledReason`). Bir kişi onu yeniden açarsa webhook o kişinin olur (ADR 182).</summary>
+    public sealed class SetWebhookStatusDataCreatedByKey : RewloyObject
+    {
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        /// <summary>Always present.</summary>
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
     }
 
     /// <summary>Query parameters of `listWebhookDeliveries`.</summary>
@@ -18308,9 +22602,9 @@ namespace Rewloy.Models
         [JsonPropertyName("id")]
         public Guid Id { get; set; }
 
-        /// <summary>campaign: bir işletmenin kampanyası; automation: otomatik mesaj ya da mesaj dizisinin adımı; reward_ready: "Ödülünüz hazır"; test: kişinin kendi denemesi; security: hesabın giriş yolunun değişmesi (yolda ya da yapıldı) ya da onaylanan bir kurtarma talebi</summary>
+        /// <summary>campaign: bir işletmenin kampanyası; automation: otomatik mesaj ya da mesaj dizisinin adımı; reward_ready: "Ödülünüz hazır"; test: kişinin kendi denemesi; security: hesabın giriş yolunun değişmesi (yolda ya da yapıldı) ya da onaylanan bir kurtarma talebi; checkout_code: kartlarınızdan biri için online ödeme kodu oluşturuldu (bir İşlem bildirimi; kodu oluşturan cihaza gitmez)</summary>
         /// <remarks>
-        /// <para>One of: `campaign`, `automation`, `reward_ready`, `test`, `security`.</para>
+        /// <para>One of: `campaign`, `automation`, `reward_ready`, `test`, `security`, `checkout_code`.</para>
         /// <para>Always present.</para>
         /// </remarks>
         [JsonPropertyName("kind")]

@@ -41,7 +41,7 @@ namespace Rewloy
         /// <summary>Onay gerekli</summary>
         public const string ConfirmRequired = "CONFIRM_REQUIRED";
 
-        /// <summary>`REASON_REQUIRED`</summary>
+        /// <summary>Gerekçe gerekli</summary>
         public const string ReasonRequired = "REASON_REQUIRED";
 
         /// <summary>Bulunamadı</summary>
@@ -74,7 +74,7 @@ namespace Rewloy
         /// <summary>Passkey doğrulanamadı</summary>
         public const string PasskeyRefused = "PASSKEY_REFUSED";
 
-        /// <summary>Giriş kodu yanlış</summary>
+        /// <summary>Kod yanlış ya da geçersiz</summary>
         public const string CodeInvalid = "CODE_INVALID";
 
         /// <summary>Bu adres ya da numara için kod girişi kapandı</summary>
@@ -170,7 +170,7 @@ namespace Rewloy
         /// <summary>Yetki yok</summary>
         public const string Forbidden = "FORBIDDEN";
 
-        /// <summary>Bu şube kapsamınız dışında</summary>
+        /// <summary>Bu şube ya da program kapsamınız dışında</summary>
         public const string OutOfScope = "OUT_OF_SCOPE";
 
         /// <summary>Planınızda yok</summary>
@@ -254,6 +254,69 @@ namespace Rewloy
         /// <summary>Bekleyen bağlantı kodu bulunamadı</summary>
         public const string ConnectTokenNotFound = "CONNECT_TOKEN_NOT_FOUND";
 
+        /// <summary>Bağlantının eklenti anahtarı yok</summary>
+        public const string NoPluginKey = "NO_PLUGIN_KEY";
+
+        /// <summary>Kodun süresi doldu</summary>
+        public const string CodeExpired = "CODE_EXPIRED";
+
+        /// <summary>Kod başka yerde kullanıldı</summary>
+        public const string CodeUsed = "CODE_USED";
+
+        /// <summary>Davet için giriş gerekli</summary>
+        public const string InviteSignIn = "INVITE_SIGN_IN";
+
+        /// <summary>Davet başka bir adrese</summary>
+        public const string InviteOtherAccount = "INVITE_OTHER_ACCOUNT";
+
+        /// <summary>Kodun bu siparişteki ayırması sona erdi</summary>
+        public const string CodeReleased = "CODE_RELEASED";
+
+        /// <summary>Bu kart bu mağazada kullanılmıyor</summary>
+        public const string CodeNotAcceptedHere = "CODE_NOT_ACCEPTED_HERE";
+
+        /// <summary>Para birimi farklı</summary>
+        public const string CurrencyMismatch = "CURRENCY_MISMATCH";
+
+        /// <summary>Bağlantı kapalı</summary>
+        public const string ShopPaused = "SHOP_PAUSED";
+
+        /// <summary>Kupon yalnız mağazada geçer</summary>
+        public const string VoucherNotOnline = "VOUCHER_NOT_ONLINE";
+
+        /// <summary>Kart online kullanılamıyor</summary>
+        public const string NotOnline = "NOT_ONLINE";
+
+        /// <summary>Açık kod sınırı</summary>
+        public const string TooManyCodes = "TOO_MANY_CODES";
+
+        /// <summary>Kod bir siparişe bağlandı</summary>
+        public const string CodeAttached = "CODE_ATTACHED";
+
+        /// <summary>Kod bulunamadı</summary>
+        public const string CodeNotFound = "CODE_NOT_FOUND";
+
+        /// <summary>Kart bu siparişte zaten var</summary>
+        public const string CardInOrder = "CARD_IN_ORDER";
+
+        /// <summary>Siparişteki kod sınırı</summary>
+        public const string OrderCodesLimit = "ORDER_CODES_LIMIT";
+
+        /// <summary>Ayırma karşılıksız kaldı</summary>
+        public const string HoldUnbacked = "HOLD_UNBACKED";
+
+        /// <summary>Kod kullanımı bulunamadı</summary>
+        public const string RedemptionNotFound = "REDEMPTION_NOT_FOUND";
+
+        /// <summary>İade tutarı fazla</summary>
+        public const string RefundTooLarge = "REFUND_TOO_LARGE";
+
+        /// <summary>İade edilecek bakiye yok</summary>
+        public const string NotRefundable = "NOT_REFUNDABLE";
+
+        /// <summary>Ayrılmış değil</summary>
+        public const string NotHeld = "NOT_HELD";
+
         /// <summary>Destek talebi bulunamadı</summary>
         public const string TicketNotFound = "TICKET_NOT_FOUND";
 
@@ -286,6 +349,18 @@ namespace Rewloy
 
         /// <summary>Ödül henüz hazır değil</summary>
         public const string RewardNotReady = "REWARD_NOT_READY";
+
+        /// <summary>İşletme sahibinin e-postası doğrulanmadı</summary>
+        public const string OwnerEmailUnverified = "OWNER_EMAIL_UNVERIFIED";
+
+        /// <summary>Geri alınacak satış yok</summary>
+        public const string SaleNotFound = "SALE_NOT_FOUND";
+
+        /// <summary>Bu notla birden çok satış var</summary>
+        public const string SaleAmbiguous = "SALE_AMBIGUOUS";
+
+        /// <summary>Satışın kazandırdığı kullanılmış</summary>
+        public const string SaleAlreadySpent = "SALE_ALREADY_SPENT";
 
         /// <summary>Kart bu şubede geçerli değil</summary>
         public const string WrongLocation = "WRONG_LOCATION";
@@ -559,6 +634,27 @@ namespace Rewloy
             "SHOP_PROGRAM_MISMATCH",
             "CONNECT_TOKEN_INVALID",
             "CONNECT_TOKEN_NOT_FOUND",
+            "NO_PLUGIN_KEY",
+            "CODE_EXPIRED",
+            "CODE_USED",
+            "INVITE_SIGN_IN",
+            "INVITE_OTHER_ACCOUNT",
+            "CODE_RELEASED",
+            "CODE_NOT_ACCEPTED_HERE",
+            "CURRENCY_MISMATCH",
+            "SHOP_PAUSED",
+            "VOUCHER_NOT_ONLINE",
+            "NOT_ONLINE",
+            "TOO_MANY_CODES",
+            "CODE_ATTACHED",
+            "CODE_NOT_FOUND",
+            "CARD_IN_ORDER",
+            "ORDER_CODES_LIMIT",
+            "HOLD_UNBACKED",
+            "REDEMPTION_NOT_FOUND",
+            "REFUND_TOO_LARGE",
+            "NOT_REFUNDABLE",
+            "NOT_HELD",
             "TICKET_NOT_FOUND",
             "NOTIFICATION_NOT_FOUND",
             "EXPORT_NOT_FOUND",
@@ -570,6 +666,10 @@ namespace Rewloy
             "WRONG_CARD_TYPE",
             "INSUFFICIENT_BALANCE",
             "REWARD_NOT_READY",
+            "OWNER_EMAIL_UNVERIFIED",
+            "SALE_NOT_FOUND",
+            "SALE_AMBIGUOUS",
+            "SALE_ALREADY_SPENT",
             "WRONG_LOCATION",
             "INVALID_PROMOTION",
             "PROMOTION_NOT_FOUND",
@@ -643,6 +743,7 @@ namespace Rewloy
             ["IDEMPOTENCY_KEY_REUSED"] = "Anahtar başka bir istekte kullanılmış",
             ["IDEMPOTENCY_IN_PROGRESS"] = "Aynı istek hâlâ işleniyor",
             ["CONFIRM_REQUIRED"] = "Onay gerekli",
+            ["REASON_REQUIRED"] = "Gerekçe gerekli",
             ["NOT_FOUND"] = "Bulunamadı",
             ["RATE_LIMITED"] = "İstek sınırı aşıldı",
             ["INTERNAL"] = "Beklenmeyen hata",
@@ -651,7 +752,7 @@ namespace Rewloy
             ["TOKEN_INVALID"] = "Oturum ya da bağlantı geçersiz",
             ["FLOW_EXPIRED"] = "Bu adımın süresi doldu",
             ["PASSKEY_REFUSED"] = "Passkey doğrulanamadı",
-            ["CODE_INVALID"] = "Giriş kodu yanlış",
+            ["CODE_INVALID"] = "Kod yanlış ya da geçersiz",
             ["CODE_LOCKED"] = "Bu adres ya da numara için kod girişi kapandı",
             ["PHONE_BUSY"] = "Bu yoldan kod gönderimi bugün için dolu",
             ["LAST_WAY_IN"] = "Hesaba girmenin son yolu",
@@ -675,7 +776,7 @@ namespace Rewloy
             ["CREDENTIAL_NOT_ALLOWED"] = "Bu kimlik türü bu uç noktayı kullanamaz",
             ["MERCHANT_REQUIRED"] = "Hangi işletme?",
             ["FORBIDDEN"] = "Yetki yok",
-            ["OUT_OF_SCOPE"] = "Bu şube kapsamınız dışında",
+            ["OUT_OF_SCOPE"] = "Bu şube ya da program kapsamınız dışında",
             ["PLAN_FEATURE_MISSING"] = "Planınızda yok",
             ["READ_ONLY"] = "Hesap salt-okunur",
             ["SEAT_LIMIT"] = "Koltuk sınırı doldu",
@@ -701,6 +802,27 @@ namespace Rewloy
             ["SHOP_PROGRAM_MISMATCH"] = "Bağlantı bu programın değil",
             ["CONNECT_TOKEN_INVALID"] = "Bağlantı kodu geçersiz",
             ["CONNECT_TOKEN_NOT_FOUND"] = "Bekleyen bağlantı kodu bulunamadı",
+            ["NO_PLUGIN_KEY"] = "Bağlantının eklenti anahtarı yok",
+            ["CODE_EXPIRED"] = "Kodun süresi doldu",
+            ["CODE_USED"] = "Kod başka yerde kullanıldı",
+            ["INVITE_SIGN_IN"] = "Davet için giriş gerekli",
+            ["INVITE_OTHER_ACCOUNT"] = "Davet başka bir adrese",
+            ["CODE_RELEASED"] = "Kodun bu siparişteki ayırması sona erdi",
+            ["CODE_NOT_ACCEPTED_HERE"] = "Bu kart bu mağazada kullanılmıyor",
+            ["CURRENCY_MISMATCH"] = "Para birimi farklı",
+            ["SHOP_PAUSED"] = "Bağlantı kapalı",
+            ["VOUCHER_NOT_ONLINE"] = "Kupon yalnız mağazada geçer",
+            ["NOT_ONLINE"] = "Kart online kullanılamıyor",
+            ["TOO_MANY_CODES"] = "Açık kod sınırı",
+            ["CODE_ATTACHED"] = "Kod bir siparişe bağlandı",
+            ["CODE_NOT_FOUND"] = "Kod bulunamadı",
+            ["CARD_IN_ORDER"] = "Kart bu siparişte zaten var",
+            ["ORDER_CODES_LIMIT"] = "Siparişteki kod sınırı",
+            ["HOLD_UNBACKED"] = "Ayırma karşılıksız kaldı",
+            ["REDEMPTION_NOT_FOUND"] = "Kod kullanımı bulunamadı",
+            ["REFUND_TOO_LARGE"] = "İade tutarı fazla",
+            ["NOT_REFUNDABLE"] = "İade edilecek bakiye yok",
+            ["NOT_HELD"] = "Ayrılmış değil",
             ["TICKET_NOT_FOUND"] = "Destek talebi bulunamadı",
             ["NOTIFICATION_NOT_FOUND"] = "Bildirim bulunamadı",
             ["SESSION_NOT_FOUND"] = "Oturum bulunamadı",
@@ -711,6 +833,10 @@ namespace Rewloy
             ["WRONG_CARD_TYPE"] = "Bu işlem bu kart türünde yok",
             ["INSUFFICIENT_BALANCE"] = "Bakiye yetersiz",
             ["REWARD_NOT_READY"] = "Ödül henüz hazır değil",
+            ["OWNER_EMAIL_UNVERIFIED"] = "İşletme sahibinin e-postası doğrulanmadı",
+            ["SALE_NOT_FOUND"] = "Geri alınacak satış yok",
+            ["SALE_AMBIGUOUS"] = "Bu notla birden çok satış var",
+            ["SALE_ALREADY_SPENT"] = "Satışın kazandırdığı kullanılmış",
             ["WRONG_LOCATION"] = "Kart bu şubede geçerli değil",
             ["INVALID_PROMOTION"] = "Kasa kampanyası geçersiz",
             ["PROMOTION_NOT_FOUND"] = "Kasa kampanyası bulunamadı",

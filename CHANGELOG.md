@@ -5,7 +5,56 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
-## 0.1.0 (yayımlanmadı / unreleased)
+## 0.2.0 (2026-10-05)
+
+İlk etiketli sürüm (GitHub Release; NuGet'e henüz çıkmadı). Rewloy API
+1.0.5'e göre yeniden üretildi: 211 yol, 255 işlem (0.1.0 etiketlenmedi). Kasa
+için `RecordSaleAsync` ve `ReverseSaleAsync`; README'de yeni bir kasa örneği,
+test modu ve `BaseUrl`.
+
+The first tagged release (a GitHub Release; not on NuGet yet). Regenerated from
+Rewloy API 1.0.5: 211 paths, 255 operations (237 in the untagged 0.1.0).
+
+- **New operations.**
+  - *Till:* `RecordSaleAsync` (`POST /v1/passes/{serial}/sale`: write a
+    completed sale to a card; the card type decides what is written) and
+    `ReverseSaleAsync` (`POST /v1/passes/{serial}/sale/reverse`: take a
+    refunded sale back).
+  - *Checkout codes and shop connections:* `QuoteCheckoutCodeAsync`,
+    `HoldCheckoutCodeAsync`, `CaptureCheckoutOrderAsync`,
+    `ReleaseCheckoutOrderAsync`, `RefundCheckoutOrderAsync`,
+    `ListOrderRedemptionsAsync`, `ListShopRedemptionsAsync`,
+    `ReleaseShopRedemptionAsync`, `RefundShopRedemptionAsync`,
+    `SetShopSettingsAsync`, `SetShopCeilingAsync`,
+    `SetShopPluginAbilitiesAsync`, and for the card holder
+    `HolderCheckoutCodesAsync`, `MintHolderCheckoutCodeAsync`,
+    `CancelHolderCheckoutCodeAsync`.
+  - `GetMetaAsync` (`GET /v1/meta`): the API's version.
+- **`GetPassAsync`** now also returns `ProgramName`, `Currency`, `Stamps`
+  (`Count`, `Max`), `Points`, `Money` (`AmountMinor`, `Currency`), `Customer`
+  (with `customers.read`), `Actions` and `Sale`.
+- **Webhooks.** `webhooks.manage` API keys manage webhooks
+  (`CreateWebhookAsync`, `ListWebhooksAsync`, `GetWebhookAsync`,
+  `SetWebhookStatusAsync`, `TestWebhookAsync`, `ListWebhookDeliveriesAsync`,
+  `WebhookEventsAsync`); a webhook reports `CreatedByKey`.
+- **Other fields.** `IssuePassAsync` returns `Created`; business lists and
+  `Me` carry `Currency`; programs carry `Sale`; batches `OnlineValue`; shops
+  `Accepts`, `Settings`, `ShopName`, `Unbacked` and the plugin key's
+  `Abilities`.
+- **Tests.** `ReadmeExamplesTests` runs the till example (sale, structured
+  fields, refund).
+- **README.**
+  - A till example with `RecordSaleAsync`, the structured fields of
+    `GetPassAsync` and a refund with `ReverseSaleAsync`.
+  - `Idempotency-Key`: a key is unique for good per credential. The
+    receipt number alone is not a key (fiscal receipt numbers restart after
+    the Z report): use register + Z number + receipt number, or a UUID
+    stored with the sale. The receipt number goes in `Reference`.
+  - Test mode exists: `rwk_test_` keys and a test business.
+  - How to set a custom base URL (staging), and a link to the developer
+    docs, https://rewloy.com/gelistiriciler.
+
+## 0.1.0 (etiketlenmedi / never tagged)
 
 İlk önizleme. Rewloy API 1.0.0'a göre üretildi: 195 yol, 237 işlem.
 

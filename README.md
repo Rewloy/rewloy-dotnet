@@ -13,7 +13,8 @@ kartı, kupon ve indirimdir:
 
 Kasada QR okutulur; bakiye, ödül ve kampanyalar kartın kendisinde güncellenir.
 Panelde yapılabilen her şey [Rewloy API v1](https://rewloy.com/gelistiriciler)
-ile de yapılabilir; bu kütüphane onu .NET'ten kullanır. Türk ERP ve kasa
+ile de yapılabilir (geliştirici belgeleri: **https://rewloy.com/gelistiriciler**);
+bu kütüphane onu .NET'ten kullanır. Türk ERP ve kasa
 yazılımlarının çoğu .NET olduğu için .NET Framework 4.7.2 ve üstünü de
 kapsar:
 
@@ -24,8 +25,8 @@ kapsar:
   CI belgeyi her gün okur ve değişince yeniden üretir.
 - **Bağımlılıksız.** `HttpClient` ve `System.Text.Json`; `net8.0` ve
   `netstandard2.0` (bu sonuncuda `System.Text.Json` paketi gelir).
-- **Güvenli tekrar.** Geçici hatalarda ölçülü yeniden deneme; kasa işleminde
-  ve kampanyada `Idempotency-Key`.
+- **Güvenli tekrar.** Geçici hatalarda ölçülü yeniden deneme; satışta, kasa
+  işleminde ve kampanyada `Idempotency-Key`.
 - **Ötesi:** `await foreach` ile sayfalama ve canlı akış (SSE), webhook imzası
   doğrulama, kullanımdan kalkma bildirimi, her çağrıda `CancellationToken`.
 
@@ -41,7 +42,7 @@ dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj
 # 2) ya da yerel bir NuGet kaynağına paketleyin:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs
 dotnet nuget add source ./nupkgs --name rewloy-yerel
-dotnet add package Rewloy --version 0.1.0
+dotnet add package Rewloy --version 0.2.0
 ```
 
 Yayımlandığında: `dotnet add package Rewloy`.
@@ -123,7 +124,7 @@ etmediği bir kimliği reddeder (`CREDENTIAL_NOT_ALLOWED`). Kimlik hiçbir hata
 iletisine ve `ToString()` çıktısına girmez.
 
 Diğer seçenekler (`RewloyClientOptions`):
-- `BaseUrl` (varsayılan `https://app.rewloy.com`);
+- `BaseUrl` (varsayılan `https://app.rewloy.com`; `/v1` olmadan, kütüphane ekler);
 - `Timeout` (60 sn, her deneme için);
 - `MaxRetries` (2);
 - `HttpClient`: kendi `HttpClient`iniz (aşağıda);
@@ -150,6 +151,22 @@ Kendi kodunuzu sınamak için aynı kapı kullanılır: `HttpClient`e kendi
 `HttpMessageHandler`ınızı verin, ağa çıkmadan sahte yanıtlar döndürün
 (bu deponun testleri böyle yazılmıştır).
 
+### Başka bir adres (staging)
+
+API'nin başka bir kopyasına (kendi staging ortamınız ya da bir vekil sunucu)
+`BaseUrl` ile bağlanılır:
+
+```csharp
+using var rewloy = new RewloyClient(new RewloyClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("REWLOY_API_KEY"),
+    BaseUrl = "https://rewloy-staging.ornek.com",   // /v1 olmadan
+});
+```
+
+Gerçek müşterilere dokunmadan denemek için adres değiştirmeniz gerekmez:
+[test modu](#test-modu) aynı adreste, ayrı bir test ortamıyla çalışır.
+
 ## Kart vermek ve kasada işlem
 
 ```csharp
@@ -164,15 +181,75 @@ var kart = await rewloy.IssuePassAsync(new IssuePassBody
 var sonuc = await rewloy.PassActionAsync(
     kart.Serial,
     new PassActionBody { Action = "earn-stamps", LocationId = subeId, Count = 1 },
-    new RequestOptions { IdempotencyKey = $"fis-{fisNo}" });
-if (sonuc.Duplicate) Console.WriteLine("Bu fiş zaten işlenmiş");
+    new RequestOptions { IdempotencyKey = $"kasa3-z0187-fis{fisNo}" });   // aşağıya bakın
+if (sonuc.Duplicate) Console.WriteLine("Bu işlem zaten yazılmış");
 ```
 
-`PassActionAsync` ve `SendCampaignAsync` bir `Idempotency-Key` ister. Verilmezse
-kütüphane bir UUID üretir ve aynı çağrının her denemesinde aynısını gönderir.
-Kasada fiş numarası gibi kendi anahtarınızı vermek daha iyidir: program çöküp
-yeniden başlasa bile aynı fiş ikinci kez işlenmez, aynı anahtarla tekrar ilk
-sonucu `Duplicate = true` ile döndürür.
+### Satış: `RecordSaleAsync`
+
+Kasa ya da kendi yazılımınız için en kolay yol `RecordSaleAsync`tir: "bu satış
+oldu, sen yaz". Ödenen toplamı (kartın para biriminde, kuruş) gönderirsiniz;
+ne yazılacağına kartın türü ve programın kendi kuralı karar verir. Kartın
+türünü bilmeniz gerekmez.
+
+```csharp
+var kart = await rewloy.GetPassAsync(seri);
+// Kartın türüne özgü alanlar; `Balance` yerine bunları okuyun.
+if (kart.Stamps != null) Console.WriteLine($"{kart.Stamps.Count} / {kart.Stamps.Max} damga");
+if (kart.Points != null) Console.WriteLine($"{kart.Points} puan");
+if (kart.Money != null) Console.WriteLine($"{kart.Money.AmountMinor / 100m} {kart.Money.Currency}");
+Console.WriteLine($"{kart.ProgramName} {kart.Customer?.Name}");   // Customer: yalnız customers.read yetkisiyle
+
+// Fiş numarası anahtar olamaz: kasa + Z no + fiş no, ya da satışla saklanan bir UUID.
+var anahtar = $"kasa3-z0187-fis{fisNo}";
+var satis = await rewloy.RecordSaleAsync(
+    seri,
+    new RecordSaleBody
+    {
+        LocationId = subeId,
+        AmountMinor = 4550,          // 45,50: kartın para biriminde (kart.Currency), kuruş
+        Currency = kart.Currency,    // isteğe bağlı güvence: uyuşmazsa 422 CURRENCY_MISMATCH
+        Reference = $"fis-{fisNo}",  // fiş numarası buraya yazılır
+    },
+    new RequestOptions { IdempotencyKey = anahtar });
+if (satis.Applied == "none") Console.WriteLine($"Yazılan bir şey yok: {satis.Reason}");
+else Console.WriteLine($"{satis.Credited} {satis.Applied} yazıldı, bakiye {satis.Balance}");
+if (satis.RewardReady) Console.WriteLine("Ödül hazır");
+```
+
+`GET /v1/passes/{serial}` ayrıca `Actions` (kartın aldığı kasa işlemleri ve
+şimdi yapılıp yapılamayacakları) ve `Sale` (bir satışın bu kartta ne
+yazacağı) alanlarını verir.
+
+**İade.** `ReverseSaleAsync` bir satışın karta yazdığını geri alır; satışı
+yazarken gönderdiğiniz anahtarla (`SaleKey`) ya da `Reference`la bulur:
+
+```csharp
+var geri = await rewloy.ReverseSaleAsync(seri, new ReverseSaleBody { SaleKey = anahtar, LocationId = subeId });
+Console.WriteLine($"{geri.Reversed} {geri.Applied} geri alındı, bakiye {geri.Balance}");
+```
+
+Bir satış bir kez geri alınır (tekrar `Duplicate = true` döner). Kazanılan
+kullanılmışsa (ödüle ya da harcamaya gitmişse) `409 SALE_ALREADY_SPENT` gelir ve
+hiçbir şey yazılmaz.
+
+### `Idempotency-Key`
+
+`RecordSaleAsync`, `PassActionAsync` ve `SendCampaignAsync` bir
+`Idempotency-Key` ister. Verilmezse kütüphane bir UUID üretir ve aynı çağrının
+her denemesinde aynısını gönderir; ama program çöküp yeniden başlarsa yeni bir
+anahtar üretilir ve satış ikinci kez yazılabilir. Kasada anahtarı kendiniz
+üretip satışla birlikte saklayın:
+- **Anahtar bir kimlik için kalıcı olarak tekildir** (8–64 karakter; defterden
+  hiç silinmez). Aynı anahtarla aynı isteğin tekrarı ikinci kez yazmaz ve
+  ilk sonucu `Duplicate = true` ile döndürür. Aynı anahtar başka bir gövdeyle
+  `422 IDEMPOTENCY_KEY_REUSED` alır.
+- **Fiş numarası tek başına anahtar olamaz:** yazarkasa fiş numaraları Z
+  raporundan sonra yeniden başlar. Kasa + Z no + fiş no birleşimi
+  (`kasa3-z0187-fis0042`) ya da satışla birlikte saklanıp tekrarda yeniden
+  gönderilen bir UUID kullanın.
+- **Fiş numarası `Reference` alanına** yazılır; müşterinin geçmişinde ve işlem
+  dökümünde görünür.
 
 ## Sayfalama
 
@@ -230,6 +307,25 @@ gösterilen sırla (`whsec_…`) doğrular:
 - `t` şimdiden 300 saniyeden (`toleranceSeconds`) uzaksa reddeder;
 - gövdeyi ayrıştırılmış olarak döndürür (`WebhookEvent`).
 
+Webhook'u panelden ya da API'den ekleyebilirsiniz. `webhooks.manage` yetkili
+bir API anahtarı `CreateWebhookAsync`, `ListWebhooksAsync`, `GetWebhookAsync`,
+`SetWebhookStatusAsync`, `TestWebhookAsync` ve `ListWebhookDeliveriesAsync`i
+çağırabilir; `WebhookEventsAsync` abone olunabilecek olayları söyler. Sır
+(`Secret`) yalnız `CreateWebhookAsync` yanıtında gelir, saklayın:
+
+```csharp
+var yeni = await rewloy.CreateWebhookAsync(new CreateWebhookBody
+{
+    Url = "https://ornek.com/rewloy/webhook",
+    Events = new[] { "pass.activity", "pass.voided" },
+});
+var sir = yeni.Secret;
+await rewloy.TestWebhookAsync(yeni.Webhook.Id);   // webhook.test olayı gönderir
+```
+
+Adres herkese açık bir `https` adresi olmalıdır (test ortamında da);
+yerelde bir tünel kullanın.
+
 Tutmazsa `WebhookSignatureException` atar (`Reason` nedenini söyler): 400 ile
 yanıtlayın ve hiçbir işlem yapmayın. Gövde mutlaka ham olmalıdır: bir modele
 ayrıştırılıp yeniden yazılan JSON imzayı tutturmaz.
@@ -280,7 +376,7 @@ işleyicinizi test etmek için `Webhook.Sign(gövde, sir)` aynı başlığı ür
 try
 {
     await rewloy.PassActionAsync(serial, new PassActionBody { Action = "spend", LocationId = subeId, AmountMinor = 5000 },
-        new RequestOptions { IdempotencyKey = $"fis-{fisNo}" });
+        new RequestOptions { IdempotencyKey = $"kasa3-z0187-fis{fisNo}" });
 }
 catch (RateLimitException ex)
 {
@@ -361,11 +457,34 @@ Her metodun bir `…WithResponseAsync` ikizi vardır; `Data`ya ek olarak sayfal�
 listede `Meta`, `StatusCode`, `Headers`, `RequestId`, `Mode` ve `Replayed`
 döner.
 
-`Mode`, yanıtın `Rewloy-Mode` başlığıdır. Platformda test modu: gerçek mesaj
-göndermeyen, gerçek kart vermeyen test anahtarları (`rwk_test_…`). Onlarla
-yapılan her çağrının yanıtı `Rewloy-Mode: test` taşır; `IsTestMode` bunu
-söyler. Başlık yoksa `Mode` `null`dır. Canlı akışta aynı bilgi
-`akis.Mode`dadır.
+`Mode`, yanıtın `Rewloy-Mode` başlığıdır: `live` ya da `test` (`IsTestMode`).
+Başlık yoksa `Mode` `null`dır. Canlı akışta aynı bilgi `akis.Mode`dadır.
+
+## Test modu
+
+Gerçek müşterilere dokunmadan denemek için işletmenizin bir **test ortamı**
+vardır: ona bağlı ayrı bir işletme (adı "· Test" ile biter); kendi
+programları, müşterileri, kartları, anahtarları ve webhook'ları. Panel →
+Geliştirici → "Test ortamını aç" ya da `POST /v1/test/environment`. Orada
+oluşturulan anahtar `rwk_test_` ile başlar ve aynı adreste, aynı yollarla
+çalışır:
+
+```csharp
+using var rewloy = new RewloyClient(new RewloyClientOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("REWLOY_TEST_KEY"),   // rwk_test_…
+});
+var yanit = await rewloy.GetPassWithResponseAsync(seri);
+Console.WriteLine(yanit.IsTestMode);   // True
+```
+
+- Test ortamı hiçbir şey göndermez (e-posta, bildirim, SMS); kartlar
+  cüzdanlara eklenmez. Gönderilmeyenler `GET /v1/test/messages` ile okunur.
+- Webhook'lar teslim edilir ve `Rewloy-Test: 1` başlığıyla `"test": true`
+  taşır.
+- Gerçek müşteri verisini test ortamına girmeyin.
+
+Ayrıntı: https://rewloy.com/gelistiriciler#test-ortamı
 
 İşlem tablosu da dışa açıktır: `RewloyOperations.PassAction` →
 `Method`, `Path`, `Credentials`, `AcceptsMerchant`, `Idempotency`, `IsPaged`…
@@ -422,6 +541,8 @@ Bir güvenlik açığı bulursanız [SECURITY.md](SECURITY.md) dosyasındaki yol
 
 ## English
 
+Developer docs (in Turkish): **https://rewloy.com/gelistiriciler**.
+
 **The official .NET (C#) library for the Rewloy API.**
 
 > **Status: preview (0.x), not published yet. The API is stable; the
@@ -451,7 +572,7 @@ git clone https://github.com/Rewloy/rewloy-dotnet
 dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj      # a project reference, or:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs      # a package in a local source
 dotnet nuget add source ./nupkgs --name rewloy-local
-dotnet add package Rewloy --version 0.1.0
+dotnet add package Rewloy --version 0.2.0
 ```
 
 On .NET Framework use `<PackageReference>` (with `packages.config`, `System.Text.Json`
@@ -464,12 +585,29 @@ TLS 1.2 is required: the default from 4.7 up; on older versions set it in `Servi
 using var rewloy = new RewloyClient(new RewloyClientOptions { ApiKey = apiKey });   // or StaffSession + Merchant, or HolderSession
 
 var kart = await rewloy.IssuePassAsync(new IssuePassBody { ProgramId = programId, Email = email, KvkkConsent = true });
-var result = await rewloy.PassActionAsync(
+var sale = await rewloy.RecordSaleAsync(
     kart.Serial,
-    new PassActionBody { Action = "earn-stamps", LocationId = locationId },
-    new RequestOptions { IdempotencyKey = $"receipt-{receiptNo}" });   // generated when omitted, reused across retries
+    new RecordSaleBody { LocationId = locationId, AmountMinor = 4550, Reference = $"receipt-{receiptNo}" },   // amount in the card's currency, minor units
+    new RequestOptions { IdempotencyKey = $"till3-z0187-r{receiptNo}" });
 ```
 
+- **Till.** `RecordSaleAsync` writes a completed sale to a card (the card type
+  and the programme's own rule decide what is written); `GetPassAsync` returns
+  the card's structured fields (`ProgramName`, `Currency`, `Stamps`, `Points`,
+  `Money`, `Customer`); `ReverseSaleAsync` takes a refunded sale back:
+  `await rewloy.ReverseSaleAsync(serial, new ReverseSaleBody { SaleKey = key })`.
+- **Idempotency keys.** `RecordSaleAsync`, `PassActionAsync` and
+  `SendCampaignAsync` need an `Idempotency-Key`. A key is unique **for good per
+  credential**: do not use the receipt number alone (fiscal receipt numbers
+  restart after the Z report) but register + Z number + receipt number, or a
+  UUID stored with the sale. The receipt number goes in `Reference`. A
+  generated key only covers the retries of one call, not a restart of your app.
+- **Base URL.** `new RewloyClientOptions { ApiKey = key, BaseUrl = "https://staging.example.com" }`
+  (the origin, without `/v1`). Default `https://app.rewloy.com`.
+- **Test mode.** Open the test environment (panel → Developer, or
+  `POST /v1/test/environment`) and use its `rwk_test_` key at the same address:
+  a separate test business that sends nothing and never reaches real
+  customers. Webhooks are delivered with `Rewloy-Test: 1`.
 - **Arguments.** Path parameters (a `Guid` for a uuid), then the body and the
   query the operation takes, then `RequestOptions` (`IdempotencyKey`,
   `Merchant`, `Timeout`, `MaxRetries`, `Headers`) and a `CancellationToken`.
@@ -477,7 +615,7 @@ var result = await rewloy.PassActionAsync(
   `Task` for 204, a `RewloyFile` for files.
 - **The whole answer.** Every method has a `…WithResponseAsync` twin that
   returns `StatusCode`, `Headers`, `RequestId`, `Mode` (the `Rewloy-Mode`
-  header, `IsTestMode` for test keys) and `Replayed` (`Idempotent-Replayed`)
+  header: `live` or `test`; `IsTestMode`) and `Replayed` (`Idempotent-Replayed`)
   besides the data.
 - **Models.** The classes are plain get/set properties in `Rewloy.Models`, so
   they compile in any C# version. Fields the API adds before the next

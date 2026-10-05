@@ -142,7 +142,7 @@ namespace Rewloy.Tests
             var inProject = Regex.Match(project, "<Version>([^<]+)</Version>").Groups[1].Value;
             var changelog = Repo.Read("CHANGELOG.md");
             var inChangelog = Regex.Match(changelog, @"^## (\d+\.\d+\.\d+)", RegexOptions.Multiline).Groups[1].Value;
-            Assert.Equal("0.1.0", RewloyVersion.Current);
+            Assert.Equal("0.2.0", RewloyVersion.Current);
             Assert.Equal(RewloyVersion.Current, inProject);
             Assert.Equal(RewloyVersion.Current, inChangelog);
             var assemblyVersion = typeof(RewloyClient).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
