@@ -79,7 +79,9 @@ using var rewloy = new RewloyClient(new RewloyClientOptions
 });
 
 var kart = await rewloy.GetPassAsync("ABCD-EFGH-JKLM");
-Console.WriteLine($"{kart.Type} {kart.Balance} {kart.RewardReady}");
+// "Şimdi ne yapılabilir?" için `Actions[].Ready` okunur; `RewardReady` yalnız damga ve puanda "ödül hazır"dır.
+var odul = kart.Actions.Any(a => (a.Action == "redeem-stamps" || a.Action == "redeem-reward") && a.Ready);
+Console.WriteLine($"{kart.Type} {kart.Balance} {odul}");
 ```
 
 Her işlem, adı `operationId` olan bir metottur
@@ -221,8 +223,17 @@ var satis = await rewloy.RecordSaleAsync(
     new RequestOptions { IdempotencyKey = anahtar });
 if (satis.Applied == "none") Console.WriteLine($"Yazılan bir şey yok: {satis.Reason}");
 else Console.WriteLine($"{satis.Credited} {satis.Applied} yazıldı, bakiye {satis.Balance}");
-if (satis.RewardReady) Console.WriteLine("Ödül hazır");
+// Fişi çizmek için ayrıca okumanız gerekmez: yazımdan sonraki kart `satis.Card`'dadır (yetki yoksa null).
+if (satis.Card != null && satis.Card.Actions.Any(a => (a.Action == "redeem-stamps" || a.Action == "redeem-reward") && a.Ready))
+    Console.WriteLine("Ödül hazır");
 ```
+
+`Actions[].Ready`, kartın kendi durumuna göre işlemin şimdi yapılıp
+yapılamayacağıdır (damga ödülü hazır mı, puan bir ödüle yetiyor mu, bakiye var
+mı, kupon kullanılmamış mı, VIP ziyareti bu pencerede sayılmış mı). `RewardReady`
+aynen kalır ama türe göre anlam değiştirir: damga ve puanda "ödül hazır";
+cashback ve hediye kartında bakiye sıfırdan büyükse; **VIP'te her zaman
+`true`**. Kasa ekranında "Ödül hazır" yazısını yalnız damga ve puanda gösterin.
 
 `GET /v1/passes/{serial}` ayrıca `Actions` (kartın aldığı kasa işlemleri ve
 şimdi yapılıp yapılamayacakları) ve `Sale` (bir satışın bu kartta ne
@@ -277,6 +288,40 @@ hediye kartı), kupon ve indirim kartında `Status`, `Uses` ve `UsesLeft`
 alanın belgesi hangi biçimde geldiğini söyler). Kazanımlar (`earn-stamps`,
 `earn-points`, `visit`) `ReverseActionAsync`le değil `ReverseSaleAsync`le geri
 alınır.
+
+**Yazımın yanıtında kartın durumu: `Card`.** `RecordSaleAsync`, `PassActionAsync`,
+`ReverseSaleAsync` ve `ReverseActionAsync` yanıtları `Card` taşır: yazımdan sonraki
+kart, `GetPassAsync`'in `Customer` hariç aynı alanlarıyla (`ProgramName`,
+`Currency`, `Stamps`/`Points`/`Money`, `Actions`…). Yazımla aynı işlemde okunur,
+yanıtın `Balance`'ıyla aynı anı söyler. **Tekrarda** (`Duplicate == true`) kartın
+**şimdiki** durumudur. Kimliğin kartın programında `passes.read` yetkisi yoksa
+(yalnız kasa yetkisi olan bir eklenti anahtarı) `Card` `null`dır.
+`RecordSaleData.Reversed == true`, bu anahtarla yazılan satışın sonradan geri
+alındığını söyler (yalnız bir tekrarda olabilir; `Credited` ilk isteğin
+yazdığıdır, kart onu artık taşımaz): fişi yeniden yazmak için yeni bir anahtar
+gönderin.
+
+**Kartın işlemleri: `ListPassOperationsAsync`.** Kartın defterindeki işlemler,
+yeniden eskiye, sayfalı (`ListPassOperationsAllAsync(seri)` ile `await foreach`):
+bir kasa ekranındaki "son işlemler" listesi ve her birinin İade düğmesi için;
+kasanın kendi anahtar günlüğünü tutması gerekmez. Her işlemde `UndoWith` hangi
+uç noktanın geri aldığını (`"sale/reverse"` ya da `"actions/reverse"`),
+`Reversible` bu kimliğin şimdi geri alıp alamayacağını söyler; bu kimliğin kendi
+işlemlerinde `SaleKey` ya da `ActionKey` de gelir.
+
+```csharp
+await foreach (var islem in rewloy.ListPassOperationsAllAsync(seri))
+{
+    if (!islem.Reversible) continue;
+    if (islem.UndoWith == "sale/reverse") await rewloy.ReverseSaleAsync(seri, new ReverseSaleBody { SaleKey = islem.SaleKey });
+    else await rewloy.ReverseActionAsync(seri, new ReverseActionBody { ActionKey = islem.ActionKey });
+}
+```
+
+**`OccurredAt` reddedilirse** `400 VALIDATION` gelir ve
+`ex.Details[0].reason` nedeni söyler: `in_future`, `too_old` (72 saatten eski),
+`before_issue` (kart o anda yoktu: `OccurredAt` olmadan yeniden gönderin),
+`invalid`. Tanımadığınız bir `reason`'ı `invalid` gibi ele alın.
 
 ### `Idempotency-Key`
 
@@ -379,6 +424,21 @@ await rewloy.TestWebhookAsync(yeni.Webhook.Id);   // webhook.test olayı gönder
 
 Adres herkese açık bir `https` adresi olmalıdır (test ortamında da);
 yerelde bir tünel kullanın.
+
+**Sırrı yenilemek.** Kaybolan ya da sızan bir sır için `RotateWebhookSecretAsync`
+webhook'a yeni bir sır verir (yeni `Secret` yalnız o yanıtta döner); webhook'u
+silip yeniden eklemek gerekmez. Eski sır 24 saat daha yeninin yanında imzalar:
+o sürede `Rewloy-Signature` iki `v1` taşır ve teslimler
+`Rewloy-Signature-Rotating: 1` başlığıyla gelir. `Webhook.Verify` her `v1`'i ve
+birden çok sırrı dener; yenilemeden önce alıcınızı `new[] { yeni, eski }` ile
+güncelleyin. `DeleteWebhookAsync` webhook'u teslim geçmişiyle birlikte kalıcı
+siler (`204`).
+
+```csharp
+var yeni = (await rewloy.RotateWebhookSecretAsync(webhookId)).Secret;
+// yeni sırrı alıcınıza ekleyin, 24 saat sonra eskisini bırakın
+var olay = Webhook.Verify(hamGovde, imzaBasligi, new[] { yeni, eskiSir });
+```
 
 Tutmazsa `WebhookSignatureException` atar (`Reason` nedenini söyler): 400 ile
 yanıtlayın ve hiçbir işlem yapmayın. Gövde mutlaka ham olmalıdır: bir modele
@@ -540,6 +600,20 @@ Console.WriteLine(yanit.IsTestMode);   // True
 - Webhook'lar teslim edilir ve `Rewloy-Test: 1` başlığıyla `"test": true`
   taşır.
 - Gerçek müşteri verisini test ortamına girmeyin.
+- `ResetTestEnvironmentAsync` (1.2.0'dan beri) müşterileri, kartları, kodları ve
+  kayıtları siler; ortamın kimliği, programları, şubeleri, anahtarları ve
+  webhook'ları kalır, entegrasyonunuz aynı anahtarla sürer. Bir anahtar
+  sızdıysa `new ResetTestEnvironmentBody { RevokeKeys = true }` anahtarları da
+  geçersiz kılar ve webhook'ları kapatır. Yanıt `Deleted` ve `Kept` sayılarını
+  verir; `Closed` artık hep `null`dır.
+- POS için anahtar: `CreateApiKeyAsync(new CreateApiKeyBody { Kind = "pos", LocationId = subeId, Register = "Kasa 1", Password = sifre })`
+  hazır Kasa rolüyle yalnız o şubede çalışan bir anahtar oluşturur; yanıttaki
+  `BaseUrl` POS'a yazılacak adrestir.
+- `ListAllBatchesAsync` işletmenin bütün hediye kartı, kupon ve indirim
+  kodlarını sayfalar (`Status` süzgeci: `open`, `full`, `expired`, `closed` ya da
+  `archived`; satırın `State`'i de bunlardan biri: `archived` kodun programı
+  arşivde demektir, bağlantısı kart vermez). Arşivdeki bir programa kod
+  oluşturmak `409 PROGRAM_ARCHIVED` (`ErrorCode.ProgramArchived`) verir.
 
 Ayrıntı: https://rewloy.com/gelistiriciler#test-ortamı
 
@@ -684,6 +758,25 @@ Console.WriteLine($"{voided.Undone} {voided.Restored} {voided.Balance}");   // s
   (`Balance`) or the coupon / discount-card answer (`Status`, `Uses`,
   `UsesLeft`); the other shape's properties are `null` (`answer.Uses != null`
   tells them apart; each property's documentation says which shape sends it).
+- **`Card` on write answers.** `RecordSaleAsync`, `PassActionAsync`,
+  `ReverseSaleAsync` and `ReverseActionAsync` answer with `Card`: the card after
+  the write, the fields of `GetPassAsync` except `Customer`, read in the same
+  transaction (on a replay, `Duplicate == true`, it is the card's **current**
+  state). A key without `passes.read` in the card's programme gets
+  `Card == null`. `RecordSaleData.Reversed == true` (replays only) says the sale
+  written under that key was taken back since: send a new key to write the
+  receipt again. For "can I act now" read `Card.Actions[].Ready`; `RewardReady`
+  means "reward ready" only for stamp and points cards (always `true` on VIP, any
+  balance on cashback and gift cards).
+- **Recent operations.** `ListPassOperationsAsync` lists a card's ledger
+  operations, newest first and paged (`ListPassOperationsAllAsync` for
+  `await foreach`), for a till's "last operations" screen: `UndoWith`
+  (`"sale/reverse"` or `"actions/reverse"`), `Reversible` and, for this
+  credential's own operations, `SaleKey` / `ActionKey` to pass straight to
+  `ReverseSaleAsync` / `ReverseActionAsync`.
+- **Rejected `OccurredAt`** is a `400 VALIDATION` whose `Details[0].reason` is
+  `in_future`, `too_old`, `before_issue` or `invalid` (treat an unknown reason as
+  `invalid`).
 - **Idempotency keys.** `RecordSaleAsync`, `PassActionAsync`,
   `SendCampaignAsync` and `RefundShopRedemptionAsync` need an `Idempotency-Key`:
   the API's OpenAPI document marks the header required for them, so
@@ -747,6 +840,20 @@ var ev = Webhook.Verify(rawBody, request.Headers["Rewloy-Signature"], secret);  
 - **Headers.** `Rewloy-Event` is the event type (`ev.Type`). `Rewloy-Delivery`
   is the same on every retry of a delivery: deduplicate on it. Delivery is at
   least once. `Webhook.Sign` makes the header for testing your own handler.
+
+`RotateWebhookSecretAsync` gives a webhook a new secret (returned only in that
+answer); the old one keeps signing for 24 hours, so `Rewloy-Signature` carries
+two `v1` values and the delivery has `Rewloy-Signature-Rotating: 1`.
+`Webhook.Verify` tries every `v1` and every secret you pass:
+`new[] { newSecret, oldSecret }`. `DeleteWebhookAsync` removes a webhook and its
+delivery history for good.
+
+Also in Rewloy 1.2.0 (library 0.2.4): `CreateApiKeyAsync(new CreateApiKeyBody { Kind = "pos", LocationId = …, Register = …, Password = … })`
+(a till key bound to one branch); `ResetTestEnvironmentAsync(new ResetTestEnvironmentBody { RevokeKeys = true })`
+(keeps the test business, programmes and keys; revokes keys only when asked);
+`ListAllBatchesAsync` (every gift-card, coupon and discount code of the
+business, with the `archived` state); `409 PROGRAM_ARCHIVED` when creating a
+code for an archived programme.
 
 ### Errors, retries, deprecations
 

@@ -86,6 +86,18 @@ public static class ApiGenerator
         public required List<string> SuccessStatuses { get; init; }
     }
 
+    /// <summary>
+    /// No required property at the top level: <c>{}</c> is a valid body. A union (<c>oneOf</c> / <c>anyOf</c>) takes
+    /// <c>{}</c> when any of its shapes does; one whose shapes all require something (CreateApiKey's two key shapes) does not.
+    /// </summary>
+    private static bool RequiredFree(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object) return false;
+        var union = schema.Prop("oneOf") ?? schema.Prop("anyOf");
+        if (union is { ValueKind: JsonValueKind.Array } shapes && shapes.GetArrayLength() > 0) return shapes.EnumerateArray().Any(RequiredFree);
+        return !(schema.Prop("required") is { ValueKind: JsonValueKind.Array } r && r.GetArrayLength() > 0);
+    }
+
     private static List<Param> ReadParams(JsonElement op, string where) =>
         op.Prop("parameters").Items().Where(p => p.Str("in") == where).Select(p => new Param
         {
@@ -313,7 +325,7 @@ public static class ApiGenerator
         {
             var mapped = model.Map(b.Schema, $"{op.Type}Body", request: true, $"{op.Id} body");
             bodyType = mapped.Type;
-            bodyRequired = b.Required && !(b.Schema.ValueKind == JsonValueKind.Object && !(b.Schema.Prop("required") is { ValueKind: JsonValueKind.Array } r && r.GetArrayLength() > 0));
+            bodyRequired = b.Required && !RequiredFree(b.Schema);
         }
 
         string? queryType = null;

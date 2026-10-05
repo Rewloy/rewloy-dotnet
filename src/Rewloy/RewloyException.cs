@@ -68,7 +68,9 @@ namespace Rewloy
         public string Detail { get; }
 
         /// <summary>
-        /// The API's <c>error.details</c>, when it sent any: for <c>VALIDATION</c> a list of <c>{ field, rule, message }</c>,
+        /// The API's <c>error.details</c>, when it sent any: for <c>VALIDATION</c> a list of
+        /// <c>{ field, rule, message, reason? }</c> (<c>reason</c> says which limit a rule hit; for <c>occurredAt</c>:
+        /// <c>in_future</c>, <c>too_old</c>, <c>before_issue</c> or <c>invalid</c>, an unknown one counts as <c>invalid</c>),
         /// for others what the catalogue says.
         /// </summary>
         public JsonElement? Details { get; }
