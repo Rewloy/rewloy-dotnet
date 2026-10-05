@@ -492,7 +492,12 @@ public static class ApiGenerator
                     $"<see href=\"{Reference}#op-{op.Id}\">API referansı</see>",
                 };
                 if (op.Deprecated is { } d) extra.Add(Naming.Xml(DeprecationNote(op, d)));
-                if (op.Idempotency is not null) extra.Add("When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.");
+                if (op.Idempotency is not null)
+                {
+                    extra.Add(op.Idempotency.Required
+                        ? "<c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call."
+                        : "<c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.");
+                }
                 if (whole) extra.Add("Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.");
                 var text = whole ? $"{summary} (the whole answer)" : string.Join("\n\n", new[] { summary, op.Description }.Where(s => !string.IsNullOrEmpty(s)));
                 Naming.Doc(sb, "        ", text, extra);

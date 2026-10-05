@@ -183,12 +183,11 @@ namespace Rewloy.Tests
             var stub = new StubHandler().Then(Reply.Raw(HttpStatusCode.BadGateway, "")).Then(Reply.Raw(HttpStatusCode.ServiceUnavailable, "")).Then(Reply.Ok("{\"balance\":3,\"duplicate\":false}"));
             using var client = Clients.Make(stub);
 
-            await client.PassActionAsync("ABCD-EFGH-JKLM", Earn());
+            await client.PassActionAsync("ABCD-EFGH-JKLM", Earn(), new RequestOptions { IdempotencyKey = "fis-42-0001" });
 
             var keys = stub.Requests.Select(r => r.Header("Idempotency-Key")).ToList();
             Assert.Equal(3, keys.Count);
-            Assert.NotNull(keys[0]);
-            Assert.Single(keys.Distinct()); // the same key on every attempt
+            Assert.All(keys, k => Assert.Equal("fis-42-0001", k)); // the same key on every attempt
             Assert.All(stub.Requests, r => Assert.Equal(stub.Requests[0].Body, r.Body));
         }
 
@@ -214,7 +213,7 @@ namespace Rewloy.Tests
         {
             var stub = new StubHandler().Then(Reply.Error(409, "IDEMPOTENCY_KEY_REUSED"));
             using var client = Clients.Make(stub);
-            var ex = await Assert.ThrowsAsync<RewloyException>(() => client.SendCampaignAsync(new SendCampaignBody { Body = "x" }));
+            var ex = await Assert.ThrowsAsync<RewloyException>(() => client.SendCampaignAsync(new SendCampaignBody { Body = "x" }, new RequestOptions { IdempotencyKey = "kampanya-0001" }));
             Assert.Equal("IDEMPOTENCY_KEY_REUSED", ex.Code);
             Assert.Equal(1, stub.Count);
         }

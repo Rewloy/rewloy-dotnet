@@ -42,7 +42,7 @@ dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj
 # 2) ya da yerel bir NuGet kaynağına paketleyin:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs
 dotnet nuget add source ./nupkgs --name rewloy-yerel
-dotnet add package Rewloy --version 0.2.0
+dotnet add package Rewloy --version 0.2.1
 ```
 
 Yayımlandığında: `dotnet add package Rewloy`.
@@ -124,7 +124,7 @@ etmediği bir kimliği reddeder (`CREDENTIAL_NOT_ALLOWED`). Kimlik hiçbir hata
 iletisine ve `ToString()` çıktısına girmez.
 
 Diğer seçenekler (`RewloyClientOptions`):
-- `BaseUrl` (varsayılan `https://app.rewloy.com`; `/v1` olmadan, kütüphane ekler);
+- `BaseUrl` (varsayılan `https://app.rewloy.com`; sonuna `/v1` eklemeniz ya da eklememeniz fark etmez: `https://app.rewloy.com/v1` de olur, kütüphane `/v1`i kendisi ekler);
 - `Timeout` (60 sn, her deneme için);
 - `MaxRetries` (2);
 - `HttpClient`: kendi `HttpClient`iniz (aşağıda);
@@ -160,7 +160,7 @@ API'nin başka bir kopyasına (kendi staging ortamınız ya da bir vekil sunucu)
 using var rewloy = new RewloyClient(new RewloyClientOptions
 {
     ApiKey = Environment.GetEnvironmentVariable("REWLOY_API_KEY"),
-    BaseUrl = "https://rewloy-staging.ornek.com",   // /v1 olmadan
+    BaseUrl = "https://rewloy-staging.ornek.com",   // sonuna /v1 yazsanız da olur
 });
 ```
 
@@ -235,11 +235,20 @@ hiçbir şey yazılmaz.
 
 ### `Idempotency-Key`
 
-`RecordSaleAsync`, `PassActionAsync` ve `SendCampaignAsync` bir
-`Idempotency-Key` ister. Verilmezse kütüphane bir UUID üretir ve aynı çağrının
-her denemesinde aynısını gönderir; ama program çöküp yeniden başlarsa yeni bir
-anahtar üretilir ve satış ikinci kez yazılabilir. Kasada anahtarı kendiniz
-üretip satışla birlikte saklayın:
+`RecordSaleAsync`, `PassActionAsync`, `SendCampaignAsync` ve
+`RefundShopRedemptionAsync` bir `Idempotency-Key` **ister**: API'nin tanımında
+(OpenAPI) bu başlık bu işlemlerde zorunludur, bu yüzden
+`RequestOptions.IdempotencyKey` bu metotlarda zorunludur. Verilmezse kütüphane
+istek göndermeden `ArgumentException` fırlatır; **sizin yerinize anahtar
+üretmez**. Üretilmiş rastgele bir anahtar yalnızca tek çağrının yeniden
+denemelerini korurdu: program çöküp yeniden başlarsa yeni bir anahtar çıkar ve
+satış ikinci kez yazılabilirdi. Anahtarı kendiniz üretip satışla birlikte
+saklayın. Anahtar 8–64 karakterlik görünür ASCII olmalıdır (0x21–0x7E: harf,
+rakam ve noktalama; boşluk, Türkçe harf ya da `fiş` gibi ASCII dışı karakter
+olmaz); aksi halde kütüphane yine istek göndermeden `ArgumentException`
+fırlatır. Başlığın isteğe bağlı olduğu işlemlerde (örneğin `IssuePassAsync`)
+anahtar verilmezse kütüphane bir UUID üretir ve aynı çağrının her denemesinde
+aynısını gönderir.
 - **Anahtar bir kimlik için kalıcı olarak tekildir** (8–64 karakter; defterden
   hiç silinmez). Aynı anahtarla aynı isteğin tekrarı ikinci kez yazmaz ve
   ilk sonucu `Duplicate = true` ile döndürür. Aynı anahtar başka bir gövdeyle
@@ -572,7 +581,7 @@ git clone https://github.com/Rewloy/rewloy-dotnet
 dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj      # a project reference, or:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs      # a package in a local source
 dotnet nuget add source ./nupkgs --name rewloy-local
-dotnet add package Rewloy --version 0.2.0
+dotnet add package Rewloy --version 0.2.1
 ```
 
 On .NET Framework use `<PackageReference>` (with `packages.config`, `System.Text.Json`
@@ -596,14 +605,24 @@ var sale = await rewloy.RecordSaleAsync(
   the card's structured fields (`ProgramName`, `Currency`, `Stamps`, `Points`,
   `Money`, `Customer`); `ReverseSaleAsync` takes a refunded sale back:
   `await rewloy.ReverseSaleAsync(serial, new ReverseSaleBody { SaleKey = key })`.
-- **Idempotency keys.** `RecordSaleAsync`, `PassActionAsync` and
-  `SendCampaignAsync` need an `Idempotency-Key`. A key is unique **for good per
+- **Idempotency keys.** `RecordSaleAsync`, `PassActionAsync`,
+  `SendCampaignAsync` and `RefundShopRedemptionAsync` need an `Idempotency-Key`:
+  the API's OpenAPI document marks the header required for them, so
+  `RequestOptions.IdempotencyKey` is required and the call throws an
+  `ArgumentException` before sending if it is missing. The client never makes
+  one up for you (a generated key would not survive a restart of your program).
+  The key must be 8–64 printable ASCII characters (0x21–0x7E); a non-ASCII key
+  such as `fiş-0042` is refused client-side, with an `ArgumentException`,
+  before anything is sent. Where the header is optional (for example
+  `IssuePassAsync`) the client still generates a UUID and reuses it on every
+  retry of the call. A key is unique **for good per
   credential**: do not use the receipt number alone (fiscal receipt numbers
   restart after the Z report) but register + Z number + receipt number, or a
-  UUID stored with the sale. The receipt number goes in `Reference`. A
-  generated key only covers the retries of one call, not a restart of your app.
+  UUID stored with the sale. The receipt number goes in `Reference`.
 - **Base URL.** `new RewloyClientOptions { ApiKey = key, BaseUrl = "https://staging.example.com" }`
-  (the origin, without `/v1`). Default `https://app.rewloy.com`.
+  or `BaseUrl = "https://staging.example.com/v1"`: with or without a trailing
+  `/v1` (and trailing slashes), the client appends `/v1/...` itself. Default
+  `https://app.rewloy.com`.
 - **Test mode.** Open the test environment (panel → Developer, or
   `POST /v1/test/environment`) and use its `rwk_test_` key at the same address:
   a separate test business that sends nothing and never reaches real

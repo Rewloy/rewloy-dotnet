@@ -33,7 +33,7 @@ namespace Rewloy
         /// <para>**Yetki:** `passes.issue` — Kart verme.</para>
         /// <para><c>POST /v1/passes</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-issuePass">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -48,7 +48,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/passes</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-issuePass">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -139,7 +139,7 @@ namespace Rewloy
         /// <para>Salt-okunur hesapta da çalışır.</para>
         /// <para><c>POST /v1/passes/{serial}/actions</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-passAction">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// </remarks>
         /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
         /// <param name="body">The JSON body.</param>
@@ -155,7 +155,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/passes/{serial}/actions</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-passAction">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
@@ -190,7 +190,7 @@ namespace Rewloy
         /// <para>Salt-okunur hesapta da çalışır.</para>
         /// <para><c>POST /v1/passes/{serial}/sale</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-recordSale">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// </remarks>
         /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
         /// <param name="body">The JSON body.</param>
@@ -206,7 +206,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/passes/{serial}/sale</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-recordSale">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="serial">Kart seri numarası, XXXX-XXXX-XXXX</param>
@@ -585,7 +585,7 @@ namespace Rewloy
         /// <para>**Kimlik:** kimlik gerekmez.</para>
         /// <para><c>POST /v1/holder/login</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderLogin">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -600,7 +600,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/login</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-holderLogin">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
@@ -2855,7 +2855,7 @@ namespace Rewloy
         /// <para>**Yetki:** `campaigns.send` — Kampanya gönderme.</para>
         /// <para><c>POST /v1/campaigns</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-sendCampaign">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -2870,7 +2870,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/campaigns</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-sendCampaign">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -4903,7 +4903,7 @@ namespace Rewloy
         /// <para>**Yetki:** `scan.adjust` — Manuel bakiye düzeltme.</para>
         /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/refund</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundShopRedemption">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
         /// <param name="redemptionId">The `redemptionId` of the path.</param>
@@ -4920,7 +4920,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/shops/{id}/redemptions/{redemptionId}/refund</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-refundShopRedemption">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is required: 8-64 printable ASCII characters. The call throws an <c>ArgumentException</c> before sending when it is missing, and the client never makes one up (a generated key would not survive a restart of your program). The same key is sent on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
@@ -6924,7 +6924,7 @@ namespace Rewloy
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/email</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderEmail">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -6939,7 +6939,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/email</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderEmail">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -6992,7 +6992,7 @@ namespace Rewloy
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/phone</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderPhone">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -7007,7 +7007,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/phone</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-addHolderPhone">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
@@ -7118,7 +7118,7 @@ namespace Rewloy
         /// <para>**Kimlik:** kart sahibi oturumu.</para>
         /// <para><c>POST /v1/holder/identities/{id}/replace</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
         /// <param name="body">The JSON body; left out, `{}` is sent.</param>
@@ -7134,7 +7134,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/identities/{id}/replace</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-replaceHolderIdentity">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="id">The `id` of the path.</param>
@@ -7789,7 +7789,7 @@ namespace Rewloy
         /// <para>**Kimlik:** kimlik gerekmez.</para>
         /// <para><c>POST /v1/holder/recovery</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-startHolderRecovery">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>
         /// <param name="options">Per-call options: the idempotency key, the business (<c>Rewloy-Merchant</c>), the timeout, the retries.</param>
@@ -7804,7 +7804,7 @@ namespace Rewloy
         /// <remarks>
         /// <para><c>POST /v1/holder/recovery</c></para>
         /// <para><see href="https://rewloy.com/gelistiriciler/api#op-startHolderRecovery">API referansı</see></para>
-        /// <para>When no <c>IdempotencyKey</c> is given in the options, the client generates a UUID and sends the same one on every retry of this call.</para>
+        /// <para><c>options.IdempotencyKey</c> is optional: 8-64 printable ASCII characters. When it is left out, the client generates a UUID and sends the same one on every retry of this call.</para>
         /// <para>Returns the whole answer: the status, headers, <c>RequestId</c>, <c>Mode</c> (the <c>Rewloy-Mode</c> header) and <c>Replayed</c> besides the data.</para>
         /// </remarks>
         /// <param name="body">The JSON body.</param>

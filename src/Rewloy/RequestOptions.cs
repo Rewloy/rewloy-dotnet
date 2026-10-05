@@ -7,10 +7,15 @@ namespace Rewloy
     public sealed class RequestOptions
     {
         /// <summary>
-        /// The <c>Idempotency-Key</c> of an operation that takes one (a till action, a campaign, issuing a card).
-        /// When left out the client generates a UUID and sends the same one on every retry of the call. At the
-        /// till prefer your own, such as the receipt number: the same receipt is then never processed twice,
-        /// even after the program restarts.
+        /// The <c>Idempotency-Key</c> of an operation that takes one (a till action, a campaign, issuing a card):
+        /// 8-64 printable ASCII characters (0x21-0x7E), otherwise the call throws an <see cref="ArgumentException"/>
+        /// before anything is sent. Where the API requires the key (<c>RecordSaleAsync</c>, <c>PassActionAsync</c>,
+        /// <c>SendCampaignAsync</c>, <c>RefundShopRedemptionAsync</c>) it is required here too: left out, the call
+        /// throws an <see cref="ArgumentException"/> before sending, and the client never makes one up, because a
+        /// generated key would not survive a restart of your program. Where it is optional (<c>IssuePassAsync</c>…)
+        /// and left out, the client generates a UUID and sends the same one on every retry of the call. At the till
+        /// use your own, such as register + Z number + receipt number: the same receipt is then never processed
+        /// twice, even after the program restarts.
         /// </summary>
         public string? IdempotencyKey { get; set; }
 

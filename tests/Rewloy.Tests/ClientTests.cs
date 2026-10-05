@@ -83,7 +83,7 @@ namespace Rewloy.Tests
             Assert.Null(req.Header("Rewloy-Merchant"));
             Assert.Null(req.Header("Idempotency-Key"));
             Assert.Null(req.Body);
-            Assert.StartsWith("rewloy-dotnet/0.2.0 ", req.Header("User-Agent"));
+            Assert.StartsWith("rewloy-dotnet/0.2.1 ", req.Header("User-Agent"));
             Assert.Equal("ABCD-EFGH-JKLM", pass.Serial);
             Assert.Equal(Guid.Parse("0192f7c1-0000-7000-8000-000000000002"), pass.ProgramId);
             Assert.Equal(3, pass.Balance);
@@ -174,7 +174,7 @@ namespace Rewloy.Tests
             var stub = new StubHandler().Then(Reply.Ok("{\"id\":\"0192f7c1-0000-7000-8000-000000000002\"}", HttpStatusCode.Created));
             using var client = Clients.Make(stub);
 
-            await client.SendCampaignAsync(new SendCampaignBody { Body = "Bu hafta kahveler 2 damga! ğüşıöç", Name = "Kahve" });
+            await client.SendCampaignAsync(new SendCampaignBody { Body = "Bu hafta kahveler 2 damga! ğüşıöç", Name = "Kahve" }, new RequestOptions { IdempotencyKey = "kampanya-0001" });
 
             var req = stub.Requests[0];
             Assert.Equal("POST", req.Method);
@@ -221,7 +221,7 @@ namespace Rewloy.Tests
             // A field the API has and the library does not know yet can still be sent.
             var body = new SendCampaignBody { Body = "x" };
             body.AdditionalProperties = new Dictionary<string, JsonElement> { ["newOption"] = JsonDocument.Parse("true").RootElement };
-            await client.SendCampaignAsync(body);
+            await client.SendCampaignAsync(body, new RequestOptions { IdempotencyKey = "kampanya-0002" });
             Assert.Equal("{\"body\":\"x\",\"newOption\":true}", stub.Requests[1].Body);
         }
 
@@ -232,12 +232,117 @@ namespace Rewloy.Tests
             using var client = Clients.Make(stub);
             var body = new PassActionBody { Action = "earn-stamps", LocationId = Guid.Parse("0192f7c1-0000-7000-8000-000000000003") };
 
-            await client.PassActionAsync("ABCD-EFGH-JKLM", body);
+            var first = await client.PassActionAsync("ABCD-EFGH-JKLM", body, new RequestOptions { IdempotencyKey = "fis-2026-0001" });
             var second = await client.PassActionAsync("ABCD-EFGH-JKLM", body, new RequestOptions { IdempotencyKey = "fis-2026-0001" });
 
-            Assert.Matches("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", stub.Requests[0].Header("Idempotency-Key")!);
+            Assert.Equal("fis-2026-0001", stub.Requests[0].Header("Idempotency-Key"));
             Assert.Equal("fis-2026-0001", stub.Requests[1].Header("Idempotency-Key"));
+            Assert.False(first.Duplicate);
             Assert.True(second.Duplicate);
+        }
+
+        [Fact]
+        public async Task Generates_an_idempotency_key_where_it_is_optional()
+        {
+            var stub = new StubHandler().Then(Reply.Ok("{}", HttpStatusCode.Created)).Then(Reply.Ok("{}", HttpStatusCode.Created));
+            using var client = Clients.Make(stub);
+            Assert.Equal(IdempotencyMode.Optional, RewloyOperations.IssuePass.Idempotency);
+            var body = new IssuePassBody { ProgramId = Guid.Parse("0192f7c1-0000-7000-8000-000000000003") };
+
+            await client.IssuePassAsync(body);
+            await client.IssuePassAsync(body, new RequestOptions { IdempotencyKey = "kayit-000123" });
+
+            Assert.Matches("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", stub.Requests[0].Header("Idempotency-Key")!);
+            Assert.Equal("kayit-000123", stub.Requests[1].Header("Idempotency-Key"));
+        }
+
+        [Fact]
+        public async Task Requires_the_idempotency_key_where_the_api_does_and_never_makes_one_up()
+        {
+            var stub = new StubHandler();
+            using var client = Clients.Make(stub);
+            var action = new PassActionBody { Action = "earn-stamps", LocationId = Guid.Parse("0192f7c1-0000-7000-8000-000000000003") };
+
+            foreach (var id in new[] { RewloyOperations.PassAction, RewloyOperations.RecordSale, RewloyOperations.SendCampaign, RewloyOperations.RefundShopRedemption })
+            {
+                Assert.Equal(IdempotencyMode.Required, id.Idempotency);
+            }
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action));
+            Assert.Contains("PassAction needs options.IdempotencyKey", ex.Message, StringComparison.OrdinalIgnoreCase);
+            await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions()));
+            await Assert.ThrowsAsync<ArgumentException>(() => client.SendCampaignAsync(new SendCampaignBody { Body = "x" }));
+            await Assert.ThrowsAsync<ArgumentException>(() => client.SendCampaignAsync(new SendCampaignBody { Body = "x" }, new RequestOptions { IdempotencyKey = null }));
+            Assert.Equal(0, stub.Count); // nothing was sent
+        }
+
+        [Theory]
+        [InlineData("fiş-000123-ğ")]
+        [InlineData("with space 123")]
+        [InlineData("kısa")]
+        [InlineData("")]
+        [InlineData("tab\there-123")]
+        [InlineData("satir\nsonu-123")]
+        [InlineData("valid-key-1\n")]
+        public async Task Refuses_an_idempotency_key_that_cannot_be_a_header_value_before_sending(string bad)
+        {
+            var stub = new StubHandler();
+            using var client = Clients.Make(stub);
+            var action = new PassActionBody { Action = "earn-stamps", LocationId = Guid.Parse("0192f7c1-0000-7000-8000-000000000003") };
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions { IdempotencyKey = bad }));
+            Assert.Contains("Idempotency-Key yalnız ASCII karakterler içerebilir", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("printable ASCII", ex.Message, StringComparison.Ordinal);
+            await Assert.ThrowsAsync<ArgumentException>(() => client.IssuePassAsync(new IssuePassBody(), new RequestOptions { IdempotencyKey = bad }));
+            Assert.Equal(0, stub.Count); // nothing was sent
+        }
+
+        [Fact]
+        public async Task Refuses_a_key_of_the_wrong_length_and_a_non_ascii_header_key_and_accepts_the_edges()
+        {
+            var stub = new StubHandler().Then(Reply.Ok("{\"balance\":1,\"duplicate\":false}")).Then(Reply.Ok("{\"balance\":1,\"duplicate\":false}")).Then(Reply.Ok("{\"balance\":1,\"duplicate\":false}"));
+            using var client = Clients.Make(stub);
+            var action = new PassActionBody { Action = "earn-stamps", LocationId = Guid.Parse("0192f7c1-0000-7000-8000-000000000003") };
+
+            await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions { IdempotencyKey = new string('a', 65) }));
+            await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions { IdempotencyKey = "1234567" }));
+            await Assert.ThrowsAsync<ArgumentException>(() => client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions { IdempotencyKey = "fis-000123", Headers = new Dictionary<string, string> { ["Idempotency-Key"] = "fiş-000123" } }));
+            Assert.Equal(0, stub.Count);
+
+            foreach (var good in new[] { "12345678", new string('a', 64), "!~#$%&()*+,-./:;<=>?@[]^_{|}" })
+            {
+                await client.PassActionAsync("ABCD-EFGH-JKLM", action, new RequestOptions { IdempotencyKey = good });
+                Assert.Equal(good, stub.Requests[stub.Count - 1].Header("Idempotency-Key"));
+            }
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("/")]
+        [InlineData("/v1")]
+        [InlineData("/v1/")]
+        [InlineData("//v1//")]
+        public async Task Accepts_the_base_url_with_or_without_v1(string suffix)
+        {
+            var stub = new StubHandler().Then(Reply.Ok("{}"));
+            using var client = Clients.Make(stub, configure: o => o.BaseUrl = "https://api.test" + suffix);
+            Assert.Equal("https://api.test", client.BaseUrl);
+            await client.GetPassAsync("S");
+            Assert.Equal("https://api.test/v1/passes/S", stub.Requests[0].Uri.ToString());
+        }
+
+        [Fact]
+        public void Strips_a_trailing_v1_from_the_default_and_a_proxy_prefix_but_not_from_a_host()
+        {
+            using var official = new RewloyClient(new RewloyClientOptions { BaseUrl = "https://app.rewloy.com/v1" });
+            Assert.Equal("https://app.rewloy.com", official.BaseUrl);
+            using var official2 = new RewloyClient(new RewloyClientOptions { BaseUrl = "https://app.rewloy.com/v1/" });
+            Assert.Equal("https://app.rewloy.com", official2.BaseUrl);
+            using var proxied = new RewloyClient(new RewloyClientOptions { BaseUrl = "https://proxy.example.com/rewloy/v1" });
+            Assert.Equal("https://proxy.example.com/rewloy", proxied.BaseUrl);
+            using var plain = new RewloyClient(new RewloyClientOptions { BaseUrl = "https://proxy.example.com/rewloy" });
+            Assert.Equal("https://proxy.example.com/rewloy", plain.BaseUrl);
+            using var host = new RewloyClient(new RewloyClientOptions { BaseUrl = "https://v1" });
+            Assert.Equal("https://v1", host.BaseUrl);
         }
 
         [Fact]

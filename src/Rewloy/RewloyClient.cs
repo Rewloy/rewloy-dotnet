@@ -102,7 +102,7 @@ namespace Rewloy
             {
                 throw new ArgumentException("BaseUrl must be an http or https address.", nameof(options));
             }
-            BaseUrl = baseUrl;
+            BaseUrl = NormalizeBaseUrl(baseUrl, parsed);
             Timeout = options.Timeout;
             MaxRetries = options.MaxRetries;
             _delay = options.Delay ?? ((delay, token) => Task.Delay(delay, token));
@@ -313,6 +313,35 @@ namespace Rewloy
 
         // ------------------------------------------------------------------ the request
 
+        /// <summary>
+        /// The base URL without a trailing <c>/v1</c> (and trailing slashes): the operations' paths carry
+        /// <c>/v1</c> themselves, and the documentation shows the address both ways.
+        /// </summary>
+        private static string NormalizeBaseUrl(string baseUrl, Uri parsed)
+        {
+            // Judged on the path, so a host that happens to be called "v1" is left alone.
+            var path = parsed.AbsolutePath.TrimEnd('/');
+            if (path.EndsWith("/v1", StringComparison.Ordinal)) return baseUrl.Substring(0, baseUrl.Length - "/v1".Length).TrimEnd('/');
+            return baseUrl;
+        }
+
+        /// <summary>
+        /// An <c>Idempotency-Key</c> is 8-64 printable ASCII characters (0x21-0x7E): an HTTP header value cannot
+        /// carry anything else.
+        /// </summary>
+        private static string CheckIdempotencyKey(string key)
+        {
+            var ok = key.Length >= 8 && key.Length <= 64;
+            for (var i = 0; ok && i < key.Length; i++) ok = key[i] >= '\u0021' && key[i] <= '\u007e';
+            if (!ok)
+            {
+                throw new ArgumentException(
+                    "Idempotency-Key yalnız ASCII karakterler içerebilir (görünür karakterler, 8-64) / the Idempotency-Key must be printable ASCII (0x21-0x7E), 8-64 characters.",
+                    "options");
+            }
+            return key;
+        }
+
         private string BuildUrl(OperationInfo op, string[] pathValues, RewloyQuery? query)
         {
             var i = 0;
@@ -403,9 +432,25 @@ namespace Rewloy
                 json = body == null ? Encoding.UTF8.GetBytes("{}") : JsonSerializer.SerializeToUtf8Bytes(body, body.GetType(), RewloyJson.Options);
             }
             // Generated once: every retry of this call sends the same key.
-            var idempotencyKey = op.Idempotency != IdempotencyMode.None ? options?.IdempotencyKey ?? Guid.NewGuid().ToString("D") : null;
-            var retryable = Retry.IsSafeMethod(op.Method) || idempotencyKey != null
-                || (options?.Headers != null && options.Headers.Keys.Any(k => string.Equals(k, "Idempotency-Key", StringComparison.OrdinalIgnoreCase)));
+            // A key the caller gave (in the options or as a plain header) is checked before anything is sent; where the
+            // API requires one the client never makes one up (a generated key would not survive a restart of the
+            // caller's program), and where it is optional the client generates a UUID.
+            var headerKey = options?.Headers?.FirstOrDefault(p => string.Equals(p.Key, "Idempotency-Key", StringComparison.OrdinalIgnoreCase) && p.Value != null).Value;
+            if (headerKey != null) CheckIdempotencyKey(headerKey);
+            string? idempotencyKey = null;
+            if (op.Idempotency != IdempotencyMode.None)
+            {
+                if (options?.IdempotencyKey != null) idempotencyKey = CheckIdempotencyKey(options.IdempotencyKey);
+                else if (headerKey != null) idempotencyKey = headerKey;
+                else if (op.Idempotency == IdempotencyMode.Required)
+                {
+                    throw new ArgumentException(
+                        op.Id + " needs options.IdempotencyKey: Idempotency-Key gerekli, kütüphane uydurmaz (8-64 ASCII karakter) / the Idempotency-Key is required and is never generated for you (8-64 printable ASCII characters).",
+                        "options");
+                }
+                else idempotencyKey = Guid.NewGuid().ToString("D");
+            }
+            var retryable = Retry.IsSafeMethod(op.Method) || idempotencyKey != null || headerKey != null;
             var maxRetries = Math.Max(0, options?.MaxRetries ?? MaxRetries);
             var timeout = options?.Timeout ?? Timeout;
             var timed = timeout > TimeSpan.Zero && timeout.TotalMilliseconds < int.MaxValue;
