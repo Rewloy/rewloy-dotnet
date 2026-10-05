@@ -156,10 +156,11 @@ regeneration workflow (24).
     (for the `User-Agent`) and the latest heading of CHANGELOG.md must agree;
     a test says so. The package is not signed and the assembly is not
     strong-named: nothing asks for it, and a strong name cannot be taken back.
-18. **Package.** ID `Rewloy`, MIT, the README inside, XML documentation for
-    both builds, a symbol package (`.snupkg`) with SourceLink to
-    `github.com/Rewloy/rewloy-dotnet`, which does not exist yet. `dotnet pack`
-    builds it; nothing is published.
+18. **Package.** ID `Rewloy`, MIT, the README and the icon inside, release
+    notes that link the CHANGELOG at the version's tag, XML documentation for
+    both builds, package validation, a symbol package (`.snupkg`) with
+    SourceLink to the public `github.com/Rewloy/rewloy-dotnet`. Published to
+    nuget.org by the Release workflow (`release.yml`) on a `v*` tag.
 
 ## Client
 
@@ -272,3 +273,8 @@ regeneration workflow (24).
     errors there (`CI=true`).
 32. **`regenerate.yml`** is Node's decision 24, with `dotnet test` as its
     check, at 05:59 UTC (Node's runs at 05:23, PHP's at 05:41).
+33. **`release.yml`** runs on a `v*` tag only: it stops unless the tag is
+    `v` + `<Version>`, tests both builds, packs, and pushes to nuget.org with
+    Trusted Publishing (`NuGet/login@v1`, environment `nuget`, the policy
+    creator's username in the repository variable `NUGET_USER`). No API key
+    is stored. The setup is in the file's header.

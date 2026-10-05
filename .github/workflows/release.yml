@@ -1,0 +1,166 @@
+# On a pushed v* tag: test both builds, pack Rewloy (.nupkg + .snupkg) and
+# publish it to nuget.org with Trusted Publishing. No API key is stored
+# anywhere: NuGet/login trades this run's GitHub OIDC token for a short-lived,
+# single-use nuget.org key, right before the push.
+#
+# A version pushed to nuget.org can never be deleted or replaced (only
+# unlisted), so the run stops unless the tag is exactly v + <Version> from
+# src/Rewloy/Rewloy.csproj.
+#
+# One-time setup on nuget.org (owner only):
+#   1. Sign in with a Microsoft account that has 2FA on, pick a PERSONAL
+#      username (permanent, case-sensitive; not "Rewloy") and confirm its email.
+#   2. Manage Organizations -> Add new organization "Rewloy", with its own
+#      unique email, confirmed too. Do not "transform" the personal account.
+#   3. Signed in as yourself (not the org): username menu -> Trusted Publishing
+#      (https://www.nuget.org/account/trustedpublishing), and add a policy:
+#        Policy Name          rewloy-dotnet release
+#        Package Owner        Rewloy (the organization)
+#        CI/CD Provider       GitHub Actions
+#        Repository Owner     Rewloy
+#        Repository           rewloy-dotnet
+#        Workflow File        release.yml   (this file; keep its name)
+#        Environment          nuget         (the job's environment below)
+#        Select Scopes        Push -> "Push new packages and package versions"
+#                             (the "only new versions" scope cannot create the ID)
+#        Glob Patterns        Rewloy
+#                             Rewloy.*
+#      The repository is public, so the policy should show Active at once. If
+#      it says "Use within N day(s)", release within that window.
+#
+# One-time setup on GitHub (Settings of Rewloy/rewloy-dotnet):
+#   - Environments -> "nuget": deployment branches and tags -> selected, add
+#     the TAG rule v* (a tag run is refused if only branches are allowed).
+#   - Variables (not Secrets: it is not secret) -> NUGET_USER = the nuget.org
+#     username of the person who created the policy. Not the org name "Rewloy"
+#     and not an email address: both fail with "No matching trust policy".
+#
+#   - Recommended: a tag ruleset on v* (Settings -> Rules -> Rulesets) that lets
+#     only admins create v* tags and blocks updating or deleting them, so a
+#     released tag can never be moved.
+#
+# Fallback: if the Trusted Publishing page refuses to create the policy (it has
+# a notice that you must already own a package), upload the first version by
+# hand at https://www.nuget.org/packages/manage/upload with Owner = Rewloy,
+# using the .nupkg (and .snupkg) from this run's "packages" artifact, which is
+# a CI build. Then create the policy; later tags publish through this file,
+# and a re-run for the hand-uploaded version is skipped as a duplicate.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  # Builds, tests and packs WITHOUT any publishing right: restore and the test
+  # runs execute third-party NuGet code, which must never be able to mint the
+  # OIDC token that can push Rewloy to nuget.org.
+  build:
+    name: test and pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # 10.0 builds and runs the tests; 8.0 is the second runtime the tests run on.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # Checked before the tests so that a wrong tag fails in seconds.
+      - name: Check the tag matches <Version>
+        shell: bash
+        run: |
+          version="$(dotnet msbuild src/Rewloy/Rewloy.csproj -getProperty:Version)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match <Version>${version}</Version> in src/Rewloy/Rewloy.csproj"
+            exit 1
+          fi
+          echo "Releasing Rewloy ${version}"
+
+      - name: Restore
+        run: dotnet restore Rewloy.sln
+
+      - name: Test (net8.0 build of the library)
+        run: dotnet test Rewloy.sln -c Release --no-restore
+
+      # Changes the test project's restore graph, so it restores again.
+      - name: Test (netstandard2.0 build of the library)
+        run: dotnet test Rewloy.sln -c Release -p:RewloyAsset=netstandard2.0
+
+      # IncludeSymbols + SymbolPackageFormat=snupkg are set in the csproj, so this
+      # writes both files. GITHUB_ACTIONS makes it a ContinuousIntegrationBuild.
+      - name: Pack
+        run: dotnet pack src/Rewloy -c Release -o artifacts
+
+      # Handed to the publish job; also kept for the hand upload in the fallback above.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+
+  # Only this job can mint the OIDC token, and it runs no third-party build code:
+  # it downloads the packed files and pushes them.
+  publish:
+    name: publish to nuget.org
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget          # must match the policy's Environment field
+    permissions:
+      id-token: write           # lets GitHub mint the OIDC token NuGet/login exchanges
+      contents: read
+    steps:
+      - name: Check NUGET_USER is set
+        shell: bash
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::Set the repository variable NUGET_USER to the policy creator's nuget.org username"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: artifacts
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Short-lived, single-use key; requested right before the push. Pinned to
+      # the v1.2.0 commit: this step handles the token and the key.
+      - name: NuGet login (OIDC -> temporary API key)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # Pushes Rewloy.X.Y.Z.nupkg, then the matching .snupkg next to it.
+      # --skip-duplicate makes a re-run of a half-finished release safe.
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

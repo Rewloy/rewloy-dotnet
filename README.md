@@ -1,5 +1,7 @@
 # Rewloy .NET
 
+English: [below](#english).
+
 **Rewloy API'nin resmî .NET (C#) kütüphanesi.**
 
 > **Durum: önizleme (0.x): yayımlanmadı; API kararlı, kütüphane arayüzü 1.0'a kadar değişebilir.**
@@ -557,7 +559,7 @@ dotnet pack src/Rewloy -c Release                              # NuGet paketi (y
 - Testler ağa çıkmaz. Üretimin belirleyici olduğunu ve işlenmiş çıktının
   güncel olduğunu da sınarlar.
 - CI her gün canlı belgeyi okur ve bir değişiklik varsa bir pull request açar.
-- Kararlar: [docs/DECISIONS.md](docs/DECISIONS.md).
+- Kararlar: [docs/DECISIONS.md](https://github.com/Rewloy/rewloy-dotnet/blob/main/docs/DECISIONS.md).
 
 ## Belgeler
 
@@ -568,7 +570,7 @@ dotnet pack src/Rewloy -c Release                              # NuGet paketi (y
 | OpenAPI 3.1 | https://app.rewloy.com/v1/openapi.json |
 | Hata kodları | https://rewloy.com/gelistiriciler/hatalar |
 | API'nin değişiklik günlüğü | https://rewloy.com/gelistiriciler/degisiklikler |
-| Bu kütüphanenin değişiklikleri | [CHANGELOG.md](CHANGELOG.md) |
+| Bu kütüphanenin değişiklikleri | [CHANGELOG.md](https://github.com/Rewloy/rewloy-dotnet/blob/main/CHANGELOG.md) |
 
 **Sürümler:**
 - Kütüphane anlamsal sürümleme ([SemVer](https://semver.org)) kullanır. 1.0'a
@@ -580,12 +582,13 @@ dotnet pack src/Rewloy -c Release                              # NuGet paketi (y
 
 ## Güvenlik
 
-Bir güvenlik açığı bulursanız [SECURITY.md](SECURITY.md) dosyasındaki yoldan
-özel olarak bildirin. Lütfen herkese açık issue açmayın.
+Bir güvenlik açığı bulursanız
+[SECURITY.md](https://github.com/Rewloy/rewloy-dotnet/blob/main/SECURITY.md)
+dosyasındaki yoldan özel olarak bildirin. Lütfen herkese açık issue açmayın.
 
 ## Lisans
 
-[MIT](LICENSE)
+[MIT](https://github.com/Rewloy/rewloy-dotnet/blob/main/LICENSE)
 
 ---
 
@@ -759,5 +762,5 @@ dotnet run --project tools/Rewloy.Generator    # regenerate from the live docume
 
 ### Security and licence
 
-Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) says.
-[MIT](LICENSE) licensed.
+Report vulnerabilities privately, as [SECURITY.md](https://github.com/Rewloy/rewloy-dotnet/blob/main/SECURITY.md) says.
+[MIT](https://github.com/Rewloy/rewloy-dotnet/blob/main/LICENSE) licensed.

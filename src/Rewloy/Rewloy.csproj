@@ -2,7 +2,7 @@
 
   <!--
     net8.0 for current .NET; netstandard2.0 for what older ERP and POS
-    software runs on: .NET Framework 4.6.2 and later (4.8 above all) and
+    software runs on: .NET Framework 4.7.2 and later (4.8 above all) and
     .NET Core 2.x/3.x. Both builds are the same source. The only dependency,
     on netstandard2.0 alone, is System.Text.Json (net8.0 has it built in).
   -->
@@ -29,11 +29,14 @@
     <RepositoryUrl>https://github.com/Rewloy/rewloy-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReleaseNotes>Changes in $(Version): https://github.com/Rewloy/rewloy-dotnet/blob/v$(Version)/CHANGELOG.md</PackageReleaseNotes>
     <Copyright>Copyright (c) 2026 Rewloy</Copyright>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
@@ -42,6 +45,7 @@
 
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../icon.png" Pack="true" PackagePath="/" Visible="false" />
     <InternalsVisibleTo Include="Rewloy.Tests" />
   </ItemGroup>
 
