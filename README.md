@@ -42,7 +42,7 @@ dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj
 # 2) ya da yerel bir NuGet kaynağına paketleyin:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs
 dotnet nuget add source ./nupkgs --name rewloy-yerel
-dotnet add package Rewloy --version 0.2.1
+dotnet add package Rewloy --version 0.2.2
 ```
 
 Yayımlandığında: `dotnet add package Rewloy`.
@@ -233,6 +233,44 @@ Bir satış bir kez geri alınır (tekrar `Duplicate = true` döner). Kazanılan
 kullanılmışsa (ödüle ya da harcamaya gitmişse) `409 SALE_ALREADY_SPENT` gelir ve
 hiçbir şey yazılmaz.
 
+**Çevrimdışı kasa kuyruğu: `OccurredAt`.** Bağlantı koptuğunda satışı sonra
+yazıyorsanız `OccurredAt` ile satışın gerçekten olduğu anı (`DateTimeOffset`,
+saat dilimiyle) gönderin; kartın geçmişinde o anla görünür. Gelecekte olamaz (2
+dakikalık saat farkı kabul edilir). `IdempotencyKey` kuyruktaki kayıtla birlikte
+saklanır, tekrar gönderilince satış ikinci kez yazılmaz.
+
+```csharp
+await rewloy.RecordSaleAsync(
+    seri,
+    new RecordSaleBody { LocationId = subeId, AmountMinor = 4550, Reference = $"fis-{fisNo}", OccurredAt = DateTimeOffset.Parse("2026-10-05T14:32:10+03:00") },
+    new RequestOptions { IdempotencyKey = anahtar });
+```
+
+**Kasa işlemini iptal etmek: `ReverseActionAsync`.** `PassActionAsync` ile
+yapılan bir harcama, ödül ya da kullanım yanlışlıkla yapıldıysa (`spend`,
+`spend-points`, `redeem-stamps`, `redeem-reward`, `use`) `ReverseActionAsync`
+tamamını geri verir. İşlemi, yaparken gönderdiğiniz `Idempotency-Key`
+(`ActionKey`) ya da işlemin `Reference` değeriyle bulur (`PassActionBody` artık
+isteğe bağlı bir `Reference` alır). `ReverseActionAsync` bir `Idempotency-Key`
+**istemez**: bir işlem bir kez geri alınır, tekrar `Duplicate = true` döner.
+
+```csharp
+await rewloy.PassActionAsync(
+    seri,
+    new PassActionBody { Action = "spend", LocationId = subeId, AmountMinor = 2500 },
+    new RequestOptions { IdempotencyKey = $"kasa3-z0187-iptal{fisNo}" });
+var iptal = await rewloy.ReverseActionAsync(seri, new ReverseActionBody { ActionKey = $"kasa3-z0187-iptal{fisNo}", LocationId = subeId });   // ya da Reference = $"fis-{fisNo}"
+Console.WriteLine($"{iptal.Undone} {iptal.Restored} geri verildi, bakiye {iptal.Balance}");
+```
+
+`PassActionAsync`in yanıtı kart türüne göre iki biçimdedir ve `PassActionData`
+tek bir sınıftır: bakiyeli kartlarda `Balance` (damga, puan, VIP, cashback,
+hediye kartı), kupon ve indirim kartında `Status`, `Uses` ve `UsesLeft`
+(`sonuc.Uses != null` ile ayırın; öteki biçimin alanları `null`dır; her
+alanın belgesi hangi biçimde geldiğini söyler). Kazanımlar (`earn-stamps`,
+`earn-points`, `visit`) `ReverseActionAsync`le değil `ReverseSaleAsync`le geri
+alınır.
+
 ### `Idempotency-Key`
 
 `RecordSaleAsync`, `PassActionAsync`, `SendCampaignAsync` ve
@@ -409,7 +447,9 @@ catch (RewloyException ex) when (ex.Code == ErrorCode.InsufficientBalance)
 - `Body`, `Headers`, `Docs` ve `Operation`.
 
 Alt sınıflar:
-- `RateLimitException`: `429`; `RetryAfter` (`TimeSpan?`);
+- `RateLimitException`: `429`; `RetryAfter` (`TimeSpan?`). Her istisna (bu dahil)
+  yanıtın `RateLimit-*` başlıklarını `RateLimit` olarak verir
+  (`Limit`, `Remaining`, `Reset`; başlık yoksa `null`);
 - `RewloyConnectionException`: yanıt gelmedi (`Status` 0, `Code`
   `CONNECTION_ERROR`);
 - `RewloyTimeoutException`: zaman aşımı (`TIMEOUT`); bir önceki sınıfın alt
@@ -458,13 +498,14 @@ var yanit = await rewloy.SendCampaignWithResponseAsync(
 yanit.StatusCode;  // 201
 yanit.Replayed;    // true: aynı anahtarın ilk yanıtı yeniden döndü (Idempotent-Replayed)
 yanit.RequestId;   // x-request-id
+yanit.RateLimit;   // RateLimit-* başlıkları: Limit, Remaining, Reset (yoksa null)
 yanit.Mode;        // Rewloy-Mode
 yanit.Data;        // kampanya
 ```
 
 Her metodun bir `…WithResponseAsync` ikizi vardır; `Data`ya ek olarak sayfalı
-listede `Meta`, `StatusCode`, `Headers`, `RequestId`, `Mode` ve `Replayed`
-döner.
+listede `Meta`, `StatusCode`, `Headers`, `RequestId`, `RateLimit`, `Mode` ve
+`Replayed` döner.
 
 `Mode`, yanıtın `Rewloy-Mode` başlığıdır: `live` ya da `test` (`IsTestMode`).
 Başlık yoksa `Mode` `null`dır. Canlı akışta aynı bilgi `akis.Mode`dadır.
@@ -581,7 +622,7 @@ git clone https://github.com/Rewloy/rewloy-dotnet
 dotnet add reference rewloy-dotnet/src/Rewloy/Rewloy.csproj      # a project reference, or:
 dotnet pack rewloy-dotnet/src/Rewloy -c Release -o ./nupkgs      # a package in a local source
 dotnet nuget add source ./nupkgs --name rewloy-local
-dotnet add package Rewloy --version 0.2.1
+dotnet add package Rewloy --version 0.2.2
 ```
 
 On .NET Framework use `<PackageReference>` (with `packages.config`, `System.Text.Json`
@@ -598,6 +639,14 @@ var sale = await rewloy.RecordSaleAsync(
     kart.Serial,
     new RecordSaleBody { LocationId = locationId, AmountMinor = 4550, Reference = $"receipt-{receiptNo}" },   // amount in the card's currency, minor units
     new RequestOptions { IdempotencyKey = $"till3-z0187-r{receiptNo}" });
+
+// A gift-card spend rung up by mistake? Void it by the key it was sent with:
+await rewloy.PassActionAsync(
+    kart.Serial,
+    new PassActionBody { Action = "spend", LocationId = locationId, AmountMinor = 2500 },
+    new RequestOptions { IdempotencyKey = $"till3-z0187-s{receiptNo}" });
+var voided = await rewloy.ReverseActionAsync(kart.Serial, new ReverseActionBody { ActionKey = $"till3-z0187-s{receiptNo}" });
+Console.WriteLine($"{voided.Undone} {voided.Restored} {voided.Balance}");   // spend 2500 and the balance again
 ```
 
 - **Till.** `RecordSaleAsync` writes a completed sale to a card (the card type
@@ -605,6 +654,20 @@ var sale = await rewloy.RecordSaleAsync(
   the card's structured fields (`ProgramName`, `Currency`, `Stamps`, `Points`,
   `Money`, `Customer`); `ReverseSaleAsync` takes a refunded sale back:
   `await rewloy.ReverseSaleAsync(serial, new ReverseSaleBody { SaleKey = key })`.
+  A void is `ReverseActionAsync`: it takes back a `PassActionAsync` that was a
+  mistake (`spend`, `spend-points`, `redeem-stamps`, `redeem-reward`, `use`),
+  found by the `Idempotency-Key` you sent with it (`ActionKey`) or its
+  `Reference`; it needs no `Idempotency-Key` of its own, and a repeat answers
+  `Duplicate = true`:
+  `await rewloy.ReverseActionAsync(serial, new ReverseActionBody { ActionKey = key })`.
+  A till that queues sales while offline sets `RecordSaleBody.OccurredAt` (a
+  `DateTimeOffset`, not in the future), so the card's history shows when the
+  sale really happened; the queued `IdempotencyKey` makes the resend safe.
+  `PassActionBody` takes an optional `Reference` too, and the answer,
+  `PassActionData`, is one class for both shapes: the balance-card answer
+  (`Balance`) or the coupon / discount-card answer (`Status`, `Uses`,
+  `UsesLeft`); the other shape's properties are `null` (`answer.Uses != null`
+  tells them apart; each property's documentation says which shape sends it).
 - **Idempotency keys.** `RecordSaleAsync`, `PassActionAsync`,
   `SendCampaignAsync` and `RefundShopRedemptionAsync` need an `Idempotency-Key`:
   the API's OpenAPI document marks the header required for them, so
@@ -633,9 +696,10 @@ var sale = await rewloy.RecordSaleAsync(
 - **Results.** A method gives the answer's `data`: `Page<T>` for paged lists,
   `Task` for 204, a `RewloyFile` for files.
 - **The whole answer.** Every method has a `…WithResponseAsync` twin that
-  returns `StatusCode`, `Headers`, `RequestId`, `Mode` (the `Rewloy-Mode`
-  header: `live` or `test`; `IsTestMode`) and `Replayed` (`Idempotent-Replayed`)
-  besides the data.
+  returns `StatusCode`, `Headers`, `RequestId`, `RateLimit` (`Limit`,
+  `Remaining`, `Reset` from the `RateLimit-*` headers; `null` when absent),
+  `Mode` (the `Rewloy-Mode` header: `live` or `test`; `IsTestMode`) and
+  `Replayed` (`Idempotent-Replayed`) besides the data.
 - **Models.** The classes are plain get/set properties in `Rewloy.Models`, so
   they compile in any C# version. Fields the API adds before the next
   regeneration are kept in `AdditionalProperties`. `Optional<T>` tells a
@@ -672,7 +736,7 @@ var ev = Webhook.Verify(rawBody, request.Headers["Rewloy-Signature"], secret);  
 
 - **Errors.** Failures throw `RewloyException` with `Status`, `Code` (the
   API's stable code; the constants are in `ErrorCode`), `Title`, `Detail`,
-  `Details`, `RequestId` and `Body`. Subclasses: `RateLimitException`
+  `Details`, `RequestId`, `RateLimit` and `Body`. Subclasses: `RateLimitException`
   (`RetryAfter`), `RewloyConnectionException` and `RewloyTimeoutException`.
   A cancelled `CancellationToken` is an ordinary `OperationCanceledException`.
 - **What is retried.** Network errors, timeouts, 429, 502-504 and

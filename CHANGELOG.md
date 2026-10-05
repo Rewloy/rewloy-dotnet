@@ -5,6 +5,47 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## 0.2.2 (2026-10-05)
+
+Rewloy 1.1.0'a (API sürümü) göre yeniden üretildi: 256 işlem (0.2.1'de 255). Kasa
+için `ReverseActionAsync`, `RecordSaleBody.OccurredAt`, `PassActionBody.Reference`;
+yanıtlarda `RateLimit-*` başlıkları.
+
+Regenerated from Rewloy 1.1.0 (the product version in `info.version`): 256
+operations (255 in 0.2.1).
+
+- **New operation: `ReverseActionAsync`** (`POST /v1/passes/{serial}/actions/reverse`).
+  Voids a till action made with `PassActionAsync` (`spend`, `spend-points`,
+  `redeem-stamps`, `redeem-reward`, `use`), found by its `ActionKey` (the
+  `Idempotency-Key` it was sent with) or its `Reference`. It needs no
+  `Idempotency-Key`: an action is voided once and a repeat answers
+  `Duplicate = true`. New error codes `ACTION_NOT_FOUND`, `ACTION_AMBIGUOUS`,
+  `ACTION_NOT_REVERSIBLE` (constants of `ErrorCode`).
+- **`RecordSaleBody.OccurredAt`** (optional `DateTimeOffset`): when the sale really
+  happened, for a till that queues sales while offline.
+- **`PassActionBody.Reference`** (optional), and **`PassActionAsync` returns a
+  typed `PassActionData`** instead of a `JsonElement`. The generator turns a
+  union of objects (`oneOf` of different shapes) into one class holding every
+  member's properties: the ones not in every member are nullable and their
+  documentation says which shape sends them (`Balance` for the balance-card
+  answer; `Status`, `Uses`, `UsesLeft` for the coupon / discount-card answer).
+  **Source-breaking for callers that read the old `JsonElement`** (also
+  `MeAsync`, the only other union of objects in the API: it returns `MeData`,
+  with `Kind` telling the staff session from the key).
+- **Rate limit headers.** `RewloyResponse.RateLimit` and `RewloyException.RateLimit`
+  (including `RateLimitException`) return a `RewloyRateLimit` (`Limit`,
+  `Remaining`, `ResetSeconds`, `Reset` as a `TimeSpan`; from `RateLimit-Limit`,
+  `RateLimit-Remaining`, `RateLimit-Reset`) or `null` when the answer has none.
+  Additive.
+- Tests no longer hard-code the version in the User-Agent check or the operation
+  count (`> 200`, from the snapshot); the pack step in CI lists whatever
+  `Rewloy.*.nupkg` it built.
+- Webhook-creation responses may carry `warnings` (a non-live installation whose
+  URL production would refuse); the `Idempotency-Key` parameter documents its
+  8–64 printable ASCII rule; the API's descriptions no longer contain internal
+  `ADR n` references. README: the till example has a void step and a note on
+  `OccurredAt` for offline queues.
+
 ## 0.2.1 (2026-10-05)
 
 Dışarıdan geliştiricilerin bulduğu üç sorun düzeltildi.

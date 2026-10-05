@@ -83,7 +83,7 @@ namespace Rewloy.Tests
             Assert.Null(req.Header("Rewloy-Merchant"));
             Assert.Null(req.Header("Idempotency-Key"));
             Assert.Null(req.Body);
-            Assert.StartsWith("rewloy-dotnet/0.2.1 ", req.Header("User-Agent"));
+            Assert.StartsWith("rewloy-dotnet/" + RewloyVersion.Current + " ", req.Header("User-Agent"));
             Assert.Equal("ABCD-EFGH-JKLM", pass.Serial);
             Assert.Equal(Guid.Parse("0192f7c1-0000-7000-8000-000000000002"), pass.ProgramId);
             Assert.Equal(3, pass.Balance);
@@ -408,7 +408,8 @@ namespace Rewloy.Tests
         public async Task Gives_the_whole_answer_through_with_response()
         {
             var stub = new StubHandler().Then(Reply.Ok("{\"id\":\"0192f7c1-0000-7000-8000-000000000002\"}", HttpStatusCode.Created,
-                ("x-request-id", "req_abc"), ("Rewloy-Mode", "test"), ("Idempotent-Replayed", "true")));
+                ("x-request-id", "req_abc"), ("Rewloy-Mode", "test"), ("Idempotent-Replayed", "true"),
+                ("RateLimit-Limit", "120"), ("RateLimit-Remaining", "117"), ("RateLimit-Reset", "41")));
             using var client = Clients.Make(stub);
 
             var res = await client.SendCampaignWithResponseAsync(new SendCampaignBody { Body = "x" }, new RequestOptions { IdempotencyKey = "kampanya-2026-10-03" });
@@ -418,6 +419,9 @@ namespace Rewloy.Tests
             Assert.Equal("req_abc", res.RequestId);
             Assert.Equal("test", res.Mode);
             Assert.True(res.IsTestMode);
+            Assert.NotNull(res.RateLimit);
+            Assert.Equal((120, 117, 41), (res.RateLimit!.Limit, res.RateLimit.Remaining, res.RateLimit.ResetSeconds));
+            Assert.Equal(TimeSpan.FromSeconds(41), res.RateLimit.Reset);
             Assert.Equal(Guid.Parse("0192f7c1-0000-7000-8000-000000000002"), res.Data.Id);
             Assert.Equal("req_abc", res.Headers.Get("X-Request-Id"));
         }
@@ -431,8 +435,39 @@ namespace Rewloy.Tests
             Assert.Null(res.Mode);
             Assert.False(res.IsTestMode);
             Assert.False(res.Replayed);
+            Assert.Null(res.RateLimit);
             var none = await client.ArchiveSegmentWithResponseAsync("vip");
             Assert.Equal(204, none.StatusCode);
+        }
+
+        [Fact]
+        public async Task Reverses_a_till_action_without_an_idempotency_key_and_types_pass_actions_two_answers()
+        {
+            var stub = new StubHandler()
+                .Then(Reply.Ok("{\"type\":\"giftcard\",\"undone\":\"spend\",\"restored\":5000,\"balance\":5000,\"uses\":null,\"usesLeft\":null,\"status\":\"active\",\"reopened\":false,\"duplicate\":false,\"rewardReady\":false,\"rewardsReady\":0}"))
+                .Then(Reply.Ok("{\"status\":\"active\",\"duplicate\":false,\"uses\":3,\"usesLeft\":2}"))
+                .Then(Reply.Ok("{\"balance\":12,\"duplicate\":false,\"promotion\":{\"id\":\"0192f7c1-0000-7000-8000-000000000009\",\"name\":\"2x\",\"factor\":2}}"));
+            using var client = Clients.Make(stub);
+            var location = Guid.Parse("0192f7c1-0000-7000-8000-000000000003");
+
+            var back = await client.ReverseActionAsync("ABCD-EFGH-JKLM", new ReverseActionBody { ActionKey = "kasa3-z0187-fis0042", LocationId = location });
+            Assert.Equal("spend", back.Undone);
+            Assert.Equal(5000, back.Restored);
+            Assert.Equal("POST", stub.Requests[0].Method);
+            Assert.Equal("/v1/passes/ABCD-EFGH-JKLM/actions/reverse", stub.Requests[0].Uri.AbsolutePath);
+            Assert.Null(stub.Requests[0].Header("Idempotency-Key"));
+            Assert.Equal("kasa3-z0187-fis0042", stub.Requests[0].Json().GetProperty("actionKey").GetString());
+
+            // passAction's answer is typed: the coupon / discount-card answer has Uses, the balance-card one Balance.
+            var use = await client.PassActionAsync("ABCD-EFGH-JKLM", new PassActionBody { Action = "use", LocationId = location }, new RequestOptions { IdempotencyKey = "kasa3-z0187-fis0043" });
+            Assert.Null(use.Balance);
+            Assert.Equal(3, use.Uses);
+            Assert.Equal(2, use.UsesLeft);
+            Assert.Equal("active", use.Status);
+            var earn = await client.PassActionAsync("ABCD-EFGH-JKLM", new PassActionBody { Action = "earn-points", LocationId = location }, new RequestOptions { IdempotencyKey = "kasa3-z0187-fis0044" });
+            Assert.Equal(12, earn.Balance);
+            Assert.Null(earn.Uses);
+            Assert.Equal(2, earn.Promotion!.Factor);
         }
 
         [Fact]

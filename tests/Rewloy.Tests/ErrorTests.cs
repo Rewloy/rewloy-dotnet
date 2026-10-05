@@ -74,6 +74,17 @@ namespace Rewloy.Tests
             Assert.Null(neither.RetryAfter);
             Assert.Equal(429, byHeader.Status);
             Assert.IsAssignableFrom<RewloyException>(byHeader);
+            Assert.Null(byHeader.RateLimit);
+        }
+
+        [Fact]
+        public async Task Carries_the_rate_limit_headers_on_the_error()
+        {
+            var stub = new StubHandler().Then(Reply.Error(429, "RATE_LIMITED", headers: new[] { ("Retry-After", "9"), ("RateLimit-Limit", "60"), ("RateLimit-Remaining", "0"), ("RateLimit-Reset", "9") }));
+            using var client = Clients.Make(stub, configure: o => o.MaxRetries = 0);
+            var ex = await Assert.ThrowsAsync<RateLimitException>(() => client.GetPassAsync("A"));
+            Assert.NotNull(ex.RateLimit);
+            Assert.Equal((60, 0, 9), (ex.RateLimit!.Limit, ex.RateLimit.Remaining, ex.RateLimit.ResetSeconds));
         }
 
         [Fact]

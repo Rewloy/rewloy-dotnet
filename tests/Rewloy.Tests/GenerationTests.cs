@@ -84,7 +84,8 @@ namespace Rewloy.Tests
                 .ToList();
 
             Assert.Equal(ids.Count, ids.Distinct().Count());
-            Assert.True(ids.Count >= 237);
+            // The snapshot is regenerated daily: the count follows it, not a constant.
+            Assert.True(ids.Count > 200);
             Assert.Equal(ids.Count, RewloyOperations.All.Count);
             var methods = typeof(RewloyClient).GetMethods(BindingFlags.Public | BindingFlags.Instance).Select(m => m.Name).ToHashSet();
             foreach (var id in ids)
@@ -154,7 +155,13 @@ namespace Rewloy.Tests
                       ""old"": { ""type"": [""string"", ""null""], ""deprecated"": true, ""x-deprecation"": { ""since"": ""2026-10-03"", ""sunset"": ""2027-04-05"", ""use"": ""newer"" } },
                       ""free"": { ""type"": ""object"", ""additionalProperties"": true },
                       ""child"": { ""type"": ""object"", ""properties"": { ""a"": { ""type"": ""boolean"" } } },
-                      ""kids"": { ""type"": ""array"", ""items"": { ""type"": ""object"", ""properties"": { ""b"": { ""type"": ""string"" } } } }
+                      ""kids"": { ""type"": ""array"", ""items"": { ""type"": ""object"", ""properties"": { ""b"": { ""type"": ""string"" } } } },
+                      ""answer"": { ""oneOf"": [
+                        { ""type"": ""object"", ""title"": ""Bakiyeli"", ""properties"": { ""balance"": { ""type"": ""number"" }, ""ok"": { ""type"": ""boolean"" }, ""kind"": { ""const"": ""a"" } }, ""required"": [""balance"", ""ok"", ""kind""] },
+                        { ""type"": ""object"", ""properties"": { ""uses"": { ""type"": ""integer"" }, ""ok"": { ""type"": ""boolean"" }, ""kind"": { ""const"": ""b"" } }, ""required"": [""uses"", ""ok"", ""kind""] } ] },
+                      ""clash"": { ""oneOf"": [
+                        { ""type"": ""object"", ""properties"": { ""x"": { ""type"": ""integer"" } } },
+                        { ""type"": ""object"", ""properties"": { ""x"": { ""type"": ""object"", ""properties"": { ""y"": { ""type"": ""string"" } } } } } ] }
                     } } } } } } },
                   ""404"": { ""description"": ""x"", ""content"": { ""application/json"": { ""schema"": { ""$ref"": ""#/components/schemas/Error"" }, ""examples"": { ""NOT_FOUND"": { ""summary"": ""Bulunamadı"", ""value"": {} } } } } }
                 }
@@ -257,6 +264,18 @@ namespace Rewloy.Tests
             Assert.Contains("public GetThingDataChild? Child { get; set; }", models);
             Assert.Contains("public IReadOnlyList<GetThingDataKidsItem>? Kids { get; set; }", models);
             Assert.Contains("public sealed class PageMeta : RewloyObject", models);
+            // A union of objects is one class: what is not in every member is nullable and says whose it is.
+            Assert.Contains("public GetThingDataAnswer? Answer { get; set; }", models);
+            var answer = models.Substring(models.IndexOf("public sealed class GetThingDataAnswer ", StringComparison.Ordinal));
+            answer = answer.Substring(0, answer.IndexOf("\n    }\n", StringComparison.Ordinal));
+            Assert.Contains("public double? Balance { get; set; }", answer);
+            Assert.Contains("public long? Uses { get; set; }", answer);
+            Assert.Contains("public bool Ok { get; set; }", answer);                 // in both members, required in both
+            Assert.Contains("public string Kind { get; set; } = default!;", answer);  // two different consts: a string
+            Assert.Contains("Only in: Bakiyeli.", answer);
+            Assert.Contains("Only in: kind = \"b\".", answer);
+            // Members that give one property different shapes stay a JsonElement.
+            Assert.Contains("public JsonElement? Clash { get; set; }", models);
             // A request body keeps null apart from left out.
             Assert.Contains("public Optional<string> Note { get; set; }", models.Substring(models.IndexOf("class PatchThingBody", StringComparison.Ordinal)));
             Assert.Contains("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]", models);

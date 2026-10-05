@@ -13,8 +13,13 @@ namespace Rewloy.Generator;
 ///     project may use and fills step by step in ERP code; it derives from
 ///     RewloyObject, which keeps the fields the API adds before the next
 ///     regeneration;
-///   - a free-form object, an unknown type and a real union (oneOf of
-///     different shapes) stay <c>JsonElement</c>;
+///   - a union of objects (oneOf of different shapes, such as the two answers
+///     of passAction) becomes one class holding every member's properties:
+///     those not in every member are nullable and say which member sends
+///     them; the members' own descriptions head the class. Two members that
+///     give one property different shapes make the union a <c>JsonElement</c>;
+///   - a free-form object, an unknown type and any other union stay
+///     <c>JsonElement</c>;
 ///   - enums stay string (and integer enums stay numbers), the values in the
 ///     doc comment: an enum type would throw on the day the API adds a value.
 /// </summary>
@@ -116,7 +121,7 @@ internal sealed class ModelBuilder
         if (schema.Prop("const") is { } constant) return ConstType(constant);
         if (schema.Prop("allOf") is not null) throw new GeneratorException($"{where}: allOf is not supported");
         var union = schema.Prop("oneOf") ?? schema.Prop("anyOf");
-        if (union is not null) return MapUnion(union.Value, where);
+        if (union is not null) return MapUnion(union.Value, hint, request, where);
 
         var nullInTypes = false;
         var types = new List<string>();
@@ -174,8 +179,9 @@ internal sealed class ModelBuilder
         return "long";
     }
 
-    private Mapped MapUnion(JsonElement members, string where)
+    private Mapped MapUnion(JsonElement members, string hint, bool request, string where)
     {
+        if (MergeObjects(members) is { } merged) return MapObject(merged, hint, request, where);
         var types = new HashSet<string>(StringComparer.Ordinal);
         var nullable = false;
         foreach (var member in members.EnumerateArray())
@@ -197,6 +203,97 @@ internal sealed class ModelBuilder
         if (types.Count != 1) return JsonElementType;
         var only = types.First();
         return new Mapped(only, only is not "string", nullable);
+    }
+
+    /// <summary>
+    /// The one object schema of a union whose members are all objects with properties: every property once, required
+    /// only when every member requires it, and told apart by a note which members send it. Null when the union is
+    /// something else, or two members give one property different shapes.
+    /// </summary>
+    private static JsonElement? MergeObjects(JsonElement members)
+    {
+        var list = members.EnumerateArray().ToList();
+        if (list.Count < 2 || list.Any(m => m.ValueKind != JsonValueKind.Object || m.Prop("properties") is not { ValueKind: JsonValueKind.Object }
+            || m.Prop("oneOf") is not null || m.Prop("anyOf") is not null || m.Prop("allOf") is not null || m.Prop("$ref") is not null
+            || m.Prop("nullable") is not null || m.Str("type") != "object")) return null;
+
+        // The member's title; else the property that tells the members apart (`kind` = "staff"); else its number.
+        string Label(int i) => list[i].Str("title") is { Length: > 0 } t ? t
+            : list[i].Prop("properties").Members().FirstOrDefault(p => p.Value.Prop("const") is { ValueKind: JsonValueKind.String }) is { Value.ValueKind: JsonValueKind.Object } d
+                ? $"{d.Name} = \"{d.Value.Prop("const")!.Value.GetString()}\""
+                : $"option {i + 1}";
+        var order = new List<string>();
+        var seen = new Dictionary<string, List<(int Member, JsonElement Schema)>>(StringComparer.Ordinal);
+        for (var i = 0; i < list.Count; i++)
+        {
+            foreach (var p in list[i].Prop("properties").Members())
+            {
+                if (!seen.TryGetValue(p.Name, out var at)) seen[p.Name] = at = [];
+                if (at.Count == 0) order.Add(p.Name);
+                at.Add((i, p.Value));
+            }
+        }
+
+        var required = list.Select(m => new HashSet<string>(m.Prop("required").Items().Select(r => r.GetString()!), StringComparer.Ordinal)).ToList();
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "object");
+            w.WriteStartArray("required");
+            foreach (var name in order) if (required.TrueForAll(r => r.Contains(name))) w.WriteStringValue(name);
+            w.WriteEndArray();
+            var variants = string.Join("\n\n", Enumerable.Range(0, list.Count).Select(i =>
+                $"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {Label(i)}" + (list[i].Str("description") is { Length: > 0 } d ? $": {d}" : string.Empty)));
+            w.WriteString("description", $"An answer of one of {list.Count.ToString(CultureInfo.InvariantCulture)} shapes; the properties that are not in every shape are null in the others.\n\n{variants}");
+            w.WriteStartObject("properties");
+            foreach (var name in order)
+            {
+                var at = seen[name];
+                JsonElement schema = at[0].Schema;
+                if (at.Count > 1 && !at.Skip(1).All(a => a.Schema.GetRawText() == schema.GetRawText()))
+                {
+                    // Different values of one kind (a `const` per member, say) are that kind; anything else is not merged.
+                    var kinds = at.Select(a => ScalarKind(a.Schema)).ToList();
+                    if (kinds.Any(k => k.Kind != "string")) return null;
+                    schema = JsonDocument.Parse(kinds.Any(k => k.Nullable) ? "{\"type\":[\"string\",\"null\"]}" : "{\"type\":\"string\"}").RootElement;
+                }
+                var note = at.Count == list.Count ? null : $"Only in: {string.Join(", ", at.Select(a => Label(a.Member)))}.";
+                w.WritePropertyName(name);
+                WriteSchemaWithNote(w, schema, note);
+            }
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        return JsonDocument.Parse(stream.ToArray()).RootElement;
+    }
+
+    /// <summary>The one JSON type of a scalar schema (a <c>const</c> or an enum counts by its values), and whether null is allowed.</summary>
+    private static (string? Kind, bool Nullable) ScalarKind(JsonElement schema)
+    {
+        if (schema.Prop("const") is { ValueKind: JsonValueKind.String }) return ("string", false);
+        var types = schema.Prop("type") switch
+        {
+            { ValueKind: JsonValueKind.String } t => [t.GetString()!],
+            { ValueKind: JsonValueKind.Array } ta => ta.EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToList(),
+            _ => new List<string>(),
+        };
+        var nullable = types.Remove("null");
+        return types.Count == 1 ? (types[0], nullable) : (null, nullable);
+    }
+
+    private static void WriteSchemaWithNote(Utf8JsonWriter w, JsonElement schema, string? note)
+    {
+        if (note is null) { schema.WriteTo(w); return; }
+        w.WriteStartObject();
+        foreach (var p in schema.EnumerateObject())
+        {
+            if (p.Name == "description") continue;
+            p.WriteTo(w);
+        }
+        var description = schema.Str("description");
+        w.WriteString("description", description is null ? note : $"{description}\n\n{note}");
+        w.WriteEndObject();
     }
 
     private Mapped MapArray(JsonElement schema, string hint, bool request, string where)

@@ -25,6 +25,9 @@ namespace Rewloy
         /// <summary><c>x-request-id</c>: quote it to Rewloy support.</summary>
         public string? RequestId => Headers.Get("x-request-id");
 
+        /// <summary>The <c>RateLimit-*</c> headers of the answer; <c>null</c> when it carries none (anonymous calls).</summary>
+        public RewloyRateLimit? RateLimit => RewloyRateLimit.From(Headers);
+
         /// <summary>
         /// <c>Rewloy-Mode</c>: which mode answered (<c>test</c> for a test key's calls, which reach no customer);
         /// <c>null</c> when the answer does not say.

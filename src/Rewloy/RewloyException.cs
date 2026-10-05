@@ -85,6 +85,9 @@ namespace Rewloy
         /// <summary>The answer's headers; <c>null</c> when no answer arrived.</summary>
         public RewloyHeaders? Headers { get; }
 
+        /// <summary>The <c>RateLimit-*</c> headers of the answer; <c>null</c> when it carried none.</summary>
+        public RewloyRateLimit? RateLimit => RewloyRateLimit.From(Headers);
+
         /// <summary>The operationId of the call.</summary>
         public string? Operation { get; }
     }

@@ -36,11 +36,17 @@ regeneration workflow (24).
      `{Operation}Body`, `…Query`, `…Data` or `…Item`; a nested object is
      `{Parent}{Property}`, with `Item` after it in a list; a clash gets a
      number. Typed classes are what IntelliSense and a compiler can help with.
-   - **`JsonElement`** is used for a real union (`me`, which is a staff
-     session's or an API key's; a team grant's `locations`, which is `"all"` or
-     a list of ids),
-     for a free-form object (the passkey `response`) and for a type the
-     document does not give.
+   - **A union of objects** (`oneOf` of different shapes: passAction's two
+     answers, `me`'s staff session or API key) is one class with every
+     member's properties (0.2.2). A property not in every member is
+     nullable and its documentation names the members that send it; one that
+     two members shape differently keeps the whole union a `JsonElement`.
+     C# has no sum type that compiles on .NET Framework with C# 7.3 and
+     deserializes without a converter; a flat class does both and reads
+     like the other models. Before 0.2.2 these were `JsonElement`.
+   - **`JsonElement`** is used for any other union (a team grant's
+     `locations`, which is `"all"` or a list of ids), for a free-form object
+     (the passkey `response`) and for a type the document does not give.
    - **A map** (`additionalProperties` with a schema) is
      `IReadOnlyDictionary<string, T>`; a list is `IReadOnlyList<T>`.
    - **Not `JsonElement` everywhere:** that is what the PHP library does with
