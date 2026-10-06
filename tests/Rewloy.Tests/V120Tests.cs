@@ -105,6 +105,53 @@ namespace Rewloy.Tests
             Assert.Equal(ErrorCode.ProgramArchived, ex.Code);
         }
 
+        // A webhook object as 1.2.0 answers: pausedUntil and resumableUntil are always present.
+        private static string WebhookRow(string? pausedUntil, string? resumableUntil)
+        {
+            static string Q(string? v) => v == null ? "null" : "\"" + v + "\"";
+            return "{\"id\":\"" + WebhookId + "\",\"url\":\"https://ornek.com/rewloy/webhook\",\"events\":[\"pass.activity\"],\"status\":\"active\",\"failures\":0,\"disabledReason\":null,"
+                + "\"createdAt\":\"2026-10-06T09:00:00.000Z\",\"week\":{\"delivered\":3,\"failed\":0,\"pending\":1},\"lastDelivered\":\"2026-10-06T09:30:00.000Z\",\"createdByKey\":null,"
+                + "\"pausedUntil\":" + Q(pausedUntil) + ",\"resumableUntil\":" + Q(resumableUntil) + "}";
+        }
+
+        [Fact]
+        public async Task Reads_the_webhook_state_fields_a_date_time_or_null()
+        {
+            var stub = new StubHandler()
+                .Then(Reply.Ok("[" + WebhookRow("2026-10-06T10:01:00.000Z", null) + "," + WebhookRow(null, "2026-10-07T09:45:00.000Z") + "]"))
+                .Then(Reply.Ok(WebhookRow(null, null)));
+            using var client = Clients.Make(stub);
+
+            var rows = await client.ListWebhooksAsync();
+            DateTimeOffset? paused = rows[0].PausedUntil;
+            Assert.Equal(DateTimeOffset.Parse("2026-10-06T10:01:00.000Z"), paused);
+            Assert.Null(rows[0].ResumableUntil);
+            Assert.Null(rows[1].PausedUntil);
+            Assert.Equal(DateTimeOffset.Parse("2026-10-07T09:45:00.000Z"), rows[1].ResumableUntil);
+
+            var turnedOn = await client.SetWebhookStatusAsync(WebhookId, new SetWebhookStatusBody { Active = true });
+            Assert.Null(turnedOn.PausedUntil);
+            Assert.Null(turnedOn.ResumableUntil);
+            Assert.Equal("PATCH", stub.Requests[1].Method);
+        }
+
+        [Fact]
+        public async Task Surfaces_what_SendBatchLink_refuses()
+        {
+            var stub = new StubHandler()
+                .Then(Reply.Error(410, "BATCH_CLOSED")).Then(Reply.Error(410, "BATCH_EXPIRED")).Then(Reply.Error(410, "BATCH_FULL")).Then(Reply.Error(409, "PROGRAM_ARCHIVED"));
+            using var client = Clients.Make(stub);
+            var batch = Guid.Parse("0192f7c1-0000-7000-8000-0000000000cc");
+            var expected = new[] { (410, ErrorCode.BatchClosed), (410, ErrorCode.BatchExpired), (410, ErrorCode.BatchFull), (409, ErrorCode.ProgramArchived) };
+            foreach (var (status, code) in expected)
+            {
+                var ex = await Assert.ThrowsAsync<RewloyException>(() => client.SendBatchLinkAsync(batch, new SendBatchLinkBody { Email = "ali@ornek.com" }));
+                Assert.Equal(status, ex.Status);
+                Assert.Equal(code, ex.Code);
+            }
+            Assert.Equal("/v1/batches/" + batch + "/send", stub.Requests[0].Uri.AbsolutePath);
+        }
+
         /// <summary>The README's 1.2.0 snippets: compiled, not run.</summary>
         private static async Task CompileOnly(RewloyClient rewloy, string seri, Guid webhookId, string hamGovde, string imzaBasligi, string eskiSir)
         {
@@ -126,6 +173,13 @@ namespace Rewloy.Tests
             var yeni = (await rewloy.RotateWebhookSecretAsync(webhookId)).Secret;
             var olay = Webhook.Verify(hamGovde, imzaBasligi, new[] { yeni, eskiSir });
             Console.WriteLine(olay.Type);
+
+            foreach (var w in await rewloy.ListWebhooksAsync())
+            {
+                if (w.PausedUntil is { } bekletme) Console.WriteLine($"{w.Url}: {bekletme:u} anına kadar bekletiliyor");
+                if (w.ResumableUntil is { } saklanan) Console.WriteLine($"{w.Url}: {saklanan:u} öncesinde açın, kaldığı yerden sürer");
+            }
+            await rewloy.SetWebhookStatusAsync(webhookId, new SetWebhookStatusBody { Active = true });
         }
     }
 }

@@ -19900,6 +19900,20 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdByKey")]
         public ListWebhooksItemCreatedByKey? CreatedByKey { get; set; }
+
+        /// <summary>Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pausedUntil")]
+        public DateTimeOffset? PausedUntil { get; set; }
+
+        /// <summary>Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("resumableUntil")]
+        public DateTimeOffset? ResumableUntil { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -20015,6 +20029,20 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdByKey")]
         public CreateWebhookDataWebhookCreatedByKey? CreatedByKey { get; set; }
+
+        /// <summary>Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pausedUntil")]
+        public DateTimeOffset? PausedUntil { get; set; }
+
+        /// <summary>Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("resumableUntil")]
+        public DateTimeOffset? ResumableUntil { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -20099,6 +20127,20 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdByKey")]
         public GetWebhookDataCreatedByKey? CreatedByKey { get; set; }
+
+        /// <summary>Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pausedUntil")]
+        public DateTimeOffset? PausedUntil { get; set; }
+
+        /// <summary>Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("resumableUntil")]
+        public DateTimeOffset? ResumableUntil { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -20191,6 +20233,20 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdByKey")]
         public SetWebhookStatusDataCreatedByKey? CreatedByKey { get; set; }
+
+        /// <summary>Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pausedUntil")]
+        public DateTimeOffset? PausedUntil { get; set; }
+
+        /// <summary>Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("resumableUntil")]
+        public DateTimeOffset? ResumableUntil { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>
@@ -20379,6 +20435,20 @@ namespace Rewloy.Models
         /// </remarks>
         [JsonPropertyName("createdByKey")]
         public RotateWebhookSecretDataWebhookCreatedByKey? CreatedByKey { get; set; }
+
+        /// <summary>Açık webhook bekletiliyor: alıcı art arda 2 kez `5xx`, `429` verdi ya da yanıt vermedi; teslimler bu ana kadar ertelenir, sonra kendiliğinden yeniden denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("pausedUntil")]
+        public DateTimeOffset? PausedUntil { get; set; }
+
+        /// <summary>Webhook'u kurallar kapattı ve bekleyen teslimleri saklanıyor: bu andan önce açılırsa (`PATCH` `{ "active": true }`) kaldığı yerden devam eder, saklananlar hemen gönderilir ve kapalıyken olan olaylar da gelir. Kapanıştan 24 saat sonrası. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse null (1.2.0).</summary>
+        /// <remarks>
+        /// <para>Always present.</para>
+        /// </remarks>
+        [JsonPropertyName("resumableUntil")]
+        public DateTimeOffset? ResumableUntil { get; set; }
     }
 
     /// <summary>Son 7 günde oluşan teslimler</summary>

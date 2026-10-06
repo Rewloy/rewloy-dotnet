@@ -484,6 +484,26 @@ her deneme yeni bir `t` ile imzalanır. Birden çok sır (webhook değiştirirke
 için `Webhook.Verify(gövde, başlık, new[] { eskiSir, yeniSir })`. Kendi
 işleyicinizi test etmek için `Webhook.Sign(gövde, sir)` aynı başlığı üretir.
 
+**Webhook'un durumu.** Webhook nesnesinde (`ListWebhooksAsync`, `GetWebhookAsync`,
+`SetWebhookStatusAsync`, `CreateWebhookAsync` ve `RotateWebhookSecretAsync`'ın webhook'u)
+iki tarih alanı hep vardır, ikisi de boş olabilir (`DateTimeOffset?`):
+- `pausedUntil`: alıcınız art arda iki kez `5xx`, `429` verdi ya da yanıt vermedi;
+  açık webhook'un teslimleri bu ana kadar bekler, sonra kendiliğinden yeniden
+  denenir (60 saniye). Bekletilmiyorsa ya da webhook kapalıysa boştur.
+- `resumableUntil`: webhook'u **kurallar** kapattı ve bekleyen teslimleri
+  saklanıyor (kapanıştan 24 saat sonrasına kadar). Bu andan önce
+  `SetWebhookStatusAsync(id, new SetWebhookStatusBody { Active = true })` ile
+  açarsanız kaldığı yerden devam eder: saklananlar hemen gider, kapalıyken olan
+  olaylar da gelir. Açıksa, bir kişi ya da anahtar kapattıysa ya da süre geçtiyse boştur.
+
+```csharp
+foreach (var w in await rewloy.ListWebhooksAsync())
+{
+    if (w.PausedUntil is { } bekletme) Console.WriteLine($"{w.Url}: {bekletme:u} anına kadar bekletiliyor");
+    if (w.ResumableUntil is { } saklanan) Console.WriteLine($"{w.Url}: {saklanan:u} öncesinde açın, kaldığı yerden sürer");
+}
+```
+
 ## Hatalar ve yeniden deneme
 
 ```csharp
@@ -614,6 +634,11 @@ Console.WriteLine(yanit.IsTestMode);   // True
   `archived`; satırın `State`'i de bunlardan biri: `archived` kodun programı
   arşivde demektir, bağlantısı kart vermez). Arşivdeki bir programa kod
   oluşturmak `409 PROGRAM_ARCHIVED` (`ErrorCode.ProgramArchived`) verir.
+- `SendBatchLinkAsync` kodun bağlantısını yalnız kod kart verirken e-postayla
+  gönderir: durdurulmuş kod `410 BATCH_CLOSED`, süresi dolmuş `410 BATCH_EXPIRED`,
+  kartları bitmiş `410 BATCH_FULL`, programı arşivde olan `409 PROGRAM_ARCHIVED`
+  verir ve e-posta gitmez (1.2.0'dan önce son üçünde de giderdi). Kodları
+  `ErrorCode` sabitleri (`ErrorCode.BatchFull`…) içindedir.
 
 Ayrıntı: https://rewloy.com/gelistiriciler#test-ortamı
 
@@ -848,12 +873,32 @@ two `v1` values and the delivery has `Rewloy-Signature-Rotating: 1`.
 `new[] { newSecret, oldSecret }`. `DeleteWebhookAsync` removes a webhook and its
 delivery history for good.
 
+A webhook object (`ListWebhooksAsync`, `GetWebhookAsync`, `SetWebhookStatusAsync`, and the
+`Webhook` of `CreateWebhookAsync` and `RotateWebhookSecretAsync`) always carries two
+fields, each `DateTimeOffset?`, null when it does not apply:
+
+- `pausedUntil`: your receiver failed twice in a row (`5xx`, `429`, a connection
+  error or no answer), so the open webhook's deliveries wait until this moment
+  and are then retried on their own (60 seconds). Null when it is not paused
+  or the webhook is off.
+- `resumableUntil`: the **rules** turned the webhook off and its pending
+  deliveries are kept (until 24 hours after it closed). Turn it on before this
+  moment (`SetWebhookStatusAsync(id, new SetWebhookStatusBody { Active = true })`) and it
+  carries on where it stopped: the kept deliveries go at once and the events
+  that happened meanwhile arrive too. Null while it is on, when a person or a
+  key turned it off, or once the time has passed.
+
 Also in Rewloy 1.2.0 (library 0.2.4): `CreateApiKeyAsync(new CreateApiKeyBody { Kind = "pos", LocationId = …, Register = …, Password = … })`
 (a till key bound to one branch); `ResetTestEnvironmentAsync(new ResetTestEnvironmentBody { RevokeKeys = true })`
 (keeps the test business, programmes and keys; revokes keys only when asked);
 `ListAllBatchesAsync` (every gift-card, coupon and discount code of the
 business, with the `archived` state); `409 PROGRAM_ARCHIVED` when creating a
 code for an archived programme.
+`SendBatchLinkAsync` e-mails a code's link only while the code issues a card:
+`410 BATCH_CLOSED` (stopped), `410 BATCH_EXPIRED` (past its date),
+`410 BATCH_FULL` (every card given) and `409 PROGRAM_ARCHIVED` (its programme is
+archived) refuse it and no mail goes; before 1.2.0 the last three were sent
+anyway. The codes are in the `ErrorCode` constants (`ErrorCode.BatchFull`…).
 
 ### Errors, retries, deprecations
 

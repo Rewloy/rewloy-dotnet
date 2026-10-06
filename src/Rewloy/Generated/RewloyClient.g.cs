@@ -2421,7 +2421,7 @@ namespace Rewloy
 
         /// <summary>Bağlantıyı e-postayla gönder</summary>
         /// <remarks>
-        /// <para>Kodun alma bağlantısını bir adrese gönderir; alıcı kartını kendisi alır (e-postası ve onayıyla). Sonuç: `queued` gönderildi, `duplicate` bu adrese bu kod zaten gönderilmişti, `suppressed` adres e-posta almayı reddetmiş ya da geri dönmüş. İşletme başına günde 300.</para>
+        /// <para>Kodun alma bağlantısını bir adrese gönderir; alıcı kartını kendisi alır (e-postası ve onayıyla). Sonuç: `queued` gönderildi, `duplicate` bu adrese bu kod zaten gönderilmişti, `suppressed` adres e-posta almayı reddetmiş ya da geri dönmüş. İşletme başına günde 300. Bağlantı yalnız kart verirken gönderilir: kod durdurulduysa `BATCH_CLOSED`, süresi dolduysa `BATCH_EXPIRED`, kartları bittiyse `BATCH_FULL`, kodun programı arşivdeyse `409 PROGRAM_ARCHIVED` (1.2.0'dan önce bu durumlarda da gönderilirdi).</para>
         /// <para>**Kimlik:** API anahtarı, ekip oturumu.</para>
         /// <para>**Yetki:** `instruments.issue` — Hediye kartı ve kupon üretme.</para>
         /// <para><c>POST /v1/batches/{id}/send</c></para>
