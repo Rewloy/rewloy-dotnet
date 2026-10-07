@@ -589,22 +589,15 @@ namespace Rewloy.Tests.Live
                 });
                 Guid hookId = Guid.Empty;
                 string hookSecret = "";
-                await run.Check("webhooks", "create to an https URL that does not resolve publicly: refused or created as documented", async () =>
+                await run.Check("webhooks", "create to a resolvable https URL (the rule is the same in a test business)", async () =>
                 {
-                    var url = "https://lt-" + tag + ".invalid/hook";
-                    try
-                    {
-                        var h = await rw.CreateWebhookAsync(new CreateWebhookBody { Url = url, Events = new[] { "pass.issued" } });
-                        hookId = h.Webhook.Id;
-                        hookSecret = h.Secret;
-                        cleanup.Add(("webhook " + hookId, async () => { try { await rw.DeleteWebhookAsync(hookId); } catch (RewloyException x) when (x.Status == 404) { } }));
-                        Assert.StartsWith("whsec_", h.Secret);
-                        Assert.Equal("active", h.Webhook.Status);
-                    }
-                    catch (RewloyException e) when (e.Code == ErrorCode.BadWebhookUrl)
-                    {
-                        Assert.Equal(422, e.Status); // documented refusal
-                    }
+                    var url = "https://example.com/rewloy-live-tests/" + tag;
+                    var h = await rw.CreateWebhookAsync(new CreateWebhookBody { Url = url, Events = new[] { "pass.issued" } });
+                    hookId = h.Webhook.Id;
+                    hookSecret = h.Secret;
+                    cleanup.Add(("webhook " + hookId, async () => { try { await rw.DeleteWebhookAsync(hookId); } catch (RewloyException x) when (x.Status == 404) { } }));
+                    Assert.StartsWith("whsec_", h.Secret);
+                    Assert.Equal("active", h.Webhook.Status);
                 });
                 await run.Check("webhooks", "an internal address is refused (BAD_WEBHOOK_URL) or, on a dev server, accepted with warnings", async () =>
                 {
