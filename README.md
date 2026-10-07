@@ -4,7 +4,7 @@ English: [below](#english).
 
 **Rewloy API'nin resmî .NET (C#) kütüphanesi.**
 
-> **Durum: önizleme (0.x), 0.2.3'ten beri nuget.org'da. API kararlı; kütüphane arayüzü 1.0'a kadar değişebilir.**
+> **Durum: önizleme (0.x), 0.2.3'ten beri nuget.org'da; 0.3.0 Rewloy API 1.3.0'ı izler. API kararlı; kütüphane arayüzü 1.0'a kadar değişebilir.**
 
 [Rewloy](https://rewloy.com), işletmelerin dijital sadakat kartlarını
 müşterinin telefonuna koyar. Kart türleri damga, puan, VIP, cashback, hediye
@@ -323,6 +323,92 @@ await foreach (var islem in rewloy.ListPassOperationsAllAsync(seri))
 `before_issue` (kart o anda yoktu: `OccurredAt` olmadan yeniden gönderin),
 `invalid`. Tanımadığınız bir `reason`'ı `invalid` gibi ele alın.
 
+### Kazanım kuralları ve fiş satırları (API 1.3.0)
+
+Fişin satırlarını (`Lines`) gönderirseniz program neyin kazandırdığına ürün
+gruplarıyla karar verebilir: "kahvenin her adedine 1 damga". Satır
+göndermeyen kasa bugünkü gibi çalışır; kuralı olmayan program da öyle.
+
+```csharp
+// 1) İşletmenin ürün grubu (bir kez tanımlanır, her program kullanır).
+var grup = await rewloy.CreateEarnGroupAsync(new CreateEarnGroupBody
+{
+    Name = "Kahveler",
+    Members = new[] { new CreateEarnGroupBodyMembersItem { Effect = "include", Match = "sku", Value = "KAHVE" } },
+});
+
+// 2) Programın kuralları. Revision, okuduğunuz sürümdür (hiç kaydedilmediyse 0); arada
+//    başkası kaydettiyse 409 REVISION_CONFLICT gelir: yeniden okuyup değişikliğinizi onun üstüne yapın.
+var kurallar = await rewloy.GetEarnRulesAsync(programId);
+await rewloy.PutEarnRulesAsync(programId, new PutEarnRulesBody
+{
+    Revision = (int)kurallar.Revision,
+    Rules = new[] { new PutEarnRulesBodyRulesItem { Kind = "stamp.perUnit", GroupId = grup.Id, Stamps = 1 } },
+});
+
+// 3) Satırlı satış. Yanıtın Earn alanı satır satır "neden" der.
+var fis = await rewloy.RecordSaleAsync(
+    seri,
+    new RecordSaleBody
+    {
+        LocationId = subeId,
+        AmountMinor = 16000,
+        Lines = new[]
+        {
+            new RecordSaleBodyLinesItem { LineId = "1", Name = "Filtre kahve", Sku = "KAHVE", Quantity = JsonSerializer.SerializeToElement(2), UnitPriceMinor = 6000 },
+            new RecordSaleBodyLinesItem { LineId = "2", Name = "Kek", UnitPriceMinor = 4000 },
+        },
+    },
+    new RequestOptions { IdempotencyKey = anahtar });
+foreach (var satir in fis.Earn!.Lines) Console.WriteLine($"{satir.LineId}: {satir.Status}, {satir.Earned} {fis.Earn.Unit}");
+foreach (var kural in fis.Earn.Rules) Console.WriteLine(kural.Text);   // "Kahve başına 1 damga"
+
+// 4) Satır iadesi: yalnız bir kahve geri alınır; satış satıldığı günün kurallarıyla yeniden yargılanır.
+//    Satır iadesi bir Idempotency-Key ister (bir iade, bir anahtar).
+var iade = await rewloy.ReverseSaleAsync(
+    seri,
+    new ReverseSaleBody { SaleKey = anahtar, Lines = new[] { new ReverseSaleBodyLinesItem { LineId = "1", Quantity = JsonSerializer.SerializeToElement(1) } } },
+    new RequestOptions { IdempotencyKey = $"{anahtar}-iade-1" });
+Console.WriteLine($"{iade.Reversed} geri alındı; kalan satırlar: {iade.LinesLeft!.Count}");
+```
+
+Hiçbir şey yazmadan sormak için: `PreviewSaleAsync(seri, …)` bir kartın satışta
+ne yazacağını söyler (`RecordSaleAsync`in gövdesi ve yanıtı, `Preview = true`; `Idempotency-Key`
+gerekmez), `PreviewEarnAsync(programId, …)` kart olmadan bir fişin ne kazandıracağını
+açıklar ve kaydedilmemiş bir kural taslağını (`RuleSet`) deneyebilir. Kasa kapanmadan
+"Bu fiş 2 damga kazandırır" demek ya da bir mağazada "76 puan kazanırsınız" yazmak için.
+Başka yeni işlemler: ürün grupları (`ListEarnGroupsAsync`, `UpdateEarnGroupAsync`…),
+fişlerden görülen kategoriler (`ListSeenLinesAsync`), başlangıç şablonları
+(`ListEarnTemplatesAsync`), kural sürümleri (`ListEarnRuleRevisionsAsync`).
+
+### Şube QR'ı, dondurma ve kopya (API 1.3.0)
+
+Her şubenin bir QR'ı vardır; okutan, şubenin sayfasını ve o şubede geçerli
+kartları görür.
+
+```csharp
+var sube = await rewloy.GetLocationAsync(subeId);
+Console.WriteLine($"{sube.Qr.Url} ({sube.Qr.State})");
+
+using var herkes = new RewloyClient(new RewloyClientOptions());                   // kimlik gerekmez
+var sayfa = await herkes.PublicBranchAsync(sube.Qr.Code);
+Console.WriteLine($"{sayfa.Business.Name} · {sayfa.Branch.Name}: {sayfa.Branch.State}, {sayfa.Items.Count} kart");
+
+RewloyFile png = await rewloy.LocationQrPngAsync(subeId, new LocationQrPngQuery { Size = 1024 });
+File.WriteAllBytes("sube-qr.png", png.Content);
+RewloyFile afis = await rewloy.LocationQrSheetPdfAsync(subeId);                    // A4 afiş
+```
+
+Şube dondurma (`FreezeLocationAsync`, `UnfreezeLocationAsync`,
+`UpdateLocationFreezeAsync`, `CancelLocationFreezeAsync`, `ListLocationFreezesAsync`)
+yalnız ekip oturumu ve kişinin şifresiyle çalışır; API anahtarıyla
+`403 CREDENTIAL_NOT_ALLOWED` gelir. Donuk şubenin kasası `409 LOCATION_FROZEN`
+verir, bütün şubeler donukken işletme duraklar (`409 BUSINESS_FROZEN`).
+`CopyProgramAsync` bir hediye kartı, kupon ya da indirim kartının başka bir
+değerle kopyasını yapar; sadakat kartı `422 NOT_AN_INSTRUMENT` alır.
+`ProgramJoinQrAsync(id, new ProgramJoinQrQuery { BranchCode = …, Format = "png" })`
+programın katılım QR'ını bir şube için verir.
+
 ### `Idempotency-Key`
 
 `RecordSaleAsync`, `PassActionAsync`, `SendCampaignAsync` ve
@@ -474,7 +560,10 @@ app.MapPost("/rewloy/webhook", async (HttpRequest istek) =>
 
 Başlıklar:
 - `Rewloy-Event`: olay türü (`pass.issued`, `pass.activity`, `pass.voided`,
-  `webhook.test`); gövdedeki `type` ile aynı (`olay.Type`).
+  `pass.extended`, `location.frozen`, `location.unfrozen`, `business.paused`,
+  `business.resumed`, `webhook.test`); gövdedeki `type` ile aynı (`olay.Type`).
+  `pass.*` olaylarının verisi `olay.PassData`, `location.*` ve `business.*`
+  olaylarının verisi (kart ve `customer_id` boştur) `olay.LocationData`dır.
 - `Rewloy-Delivery`: teslimin kimliği. Teslim "en az bir kez"dir: çift gelen
   teslimi bununla ayıklayın.
 
@@ -689,11 +778,14 @@ REWLOY_BASE_URL=https://dev-sunucunuz REWLOY_API_KEY=rwk_test_… \
   hediye kartı), kartlar (ver, getir, kasa görünümü), satış (`RecordSale`),
   `PassAction`, işlem listesi ve geri alma, müşteri arama, sayfalama, kodlar
   (oluştur, listele, `SendBatchLink` ret durumları), webhook'lar (oluştur,
-  listele, sırrı yenile, sil), idempotency, hata nesneleri, test sıfırlama.
+  listele, sırrı yenile, sil), idempotency, hata nesneleri, test sıfırlama ve
+  (API 1.3.0) fiş satırlı kazanım kuralları, önizlemeler, satır iadesi,
+  `CopyProgramAsync`, şube QR'ı ve anahtarın şube dondurma reddi.
   Sonda alan başına geçen/kalan sayısı yazılır; herhangi bir hatada çıkış kodu
   sıfır değildir.
 - Sıfırlama bir işletme için günde en fazla 5 kez çalışır (`429 RATE_LIMITED`).
-- Kapsam dışı (0.3.0'da yeniden üretimle): bkz. `tests/Rewloy.Tests/Live/TODO.md`.
+- Kapsam dışı: bkz. `tests/Rewloy.Tests/Live/TODO.md` (şube dondurma da burada:
+  ekip oturumu ve sahibin şifresi ister).
 
 ## Belgeler
 
@@ -829,6 +921,30 @@ Console.WriteLine($"{voided.Undone} {voided.Restored} {voided.Balance}");   // s
   (`"sale/reverse"` or `"actions/reverse"`), `Reversible` and, for this
   credential's own operations, `SaleKey` / `ActionKey` to pass straight to
   `ReverseSaleAsync` / `ReverseActionAsync`.
+- **Earn rules and receipt lines (API 1.3.0).** `RecordSaleBody.Lines` takes the
+  receipt's lines (`RecordSaleBodyLinesItem`); with a programme's rules
+  (`CreateEarnGroupAsync` for product groups, `PutEarnRulesAsync` for the rule
+  set: `Revision` is the revision you read, a newer one is `409 REVISION_CONFLICT`)
+  the answer's `Earn` explains the credit per line, per rule and in total.
+  `PreviewSaleAsync` (a card) and `PreviewEarnAsync` (a programme, no card; an
+  unsaved draft goes in `RuleSet`) answer the same without writing anything.
+  `ReverseSaleBody.Lines` refunds some lines of a sale (needs an
+  `Idempotency-Key`; the sale is judged again with the rules of its day and only the
+  difference is taken back; the answer has `Earn` and `LinesLeft`).
+  `PassActionBody.BillMinor` is the whole bill when a cashback programme limits
+  its share of it. The Turkish part has a worked example.
+- **Branch QR and freeze (API 1.3.0).** `PublicBranchAsync(code)` reads the page a
+  branch's QR opens (no credential), `LocationQrSvgAsync` / `LocationQrPngAsync` /
+  `LocationQrSheetPdfAsync` / `LocationQrSheetSvgAsync` return the QR and the A4
+  sheet as a `RewloyFile`, `GetLocationQrItemsAsync` / `PutLocationQrItemsAsync`
+  the branch's card list. A branch can be frozen (`FreezeLocationAsync` and
+  friends: a team session and the person's password; a key gets
+  `403 CREDENTIAL_NOT_ALLOWED`): its till then refuses `409 LOCATION_FROZEN`, and
+  with every branch frozen the business pauses (`409 BUSINESS_FROZEN`).
+  `CopyProgramAsync` copies a gift card, coupon or discount card; a loyalty
+  card is `422 NOT_AN_INSTRUMENT`.
+  `ProgramJoinQrAsync` takes an optional `ProgramJoinQrQuery` (`BranchCode`,
+  `Format`); `ProgramJoinQrAsync(id, options)` as written for 0.2.4 still compiles.
 - **Rejected `OccurredAt`** is a `400 VALIDATION` whose `Details[0].reason` is
   `in_future`, `too_old`, `before_issue` or `invalid` (treat an unknown reason as
   `invalid`).
@@ -918,6 +1034,13 @@ fields, each `DateTimeOffset?`, null when it does not apply:
   that happened meanwhile arrive too. Null while it is on, when a person or a
   key turned it off, or once the time has passed.
 
+Rewloy 1.3.0 (library 0.3.0) adds the events `pass.extended` (a card's last day
+moved later: `PassData.From`, `PassData.To`, `Reason` `merchant` or `branch_frozen`),
+`location.frozen`, `location.unfrozen`, `business.paused` and `business.resumed`
+(read with `ev.LocationData`; `card` and `customer_id` are null), and
+`PassData.Partial` on the adjustment of a line refund. Keep a default branch on
+`ev.Type`.
+
 Also in Rewloy 1.2.0 (library 0.2.4): `CreateApiKeyAsync(new CreateApiKeyBody { Kind = "pos", LocationId = …, Register = …, Password = … })`
 (a till key bound to one branch); `ResetTestEnvironmentAsync(new ResetTestEnvironmentBody { RevokeKeys = true })`
 (keeps the test business, programmes and keys; revokes keys only when asked);
@@ -980,10 +1103,13 @@ REWLOY_BASE_URL=https://your-dev-server REWLOY_API_KEY=rwk_test_… \
   passes (issue, get, till view), `RecordSale`, `PassAction`, the operations
   list and reversals, customer search, pagination, codes (create, list,
   `SendBatchLink` refusals), webhooks (create, list, rotate secret, delete),
-  idempotency, error objects, test reset. It prints passed/failed per area and
+  idempotency, error objects, test reset, and (API 1.3.0) earn rules with
+  receipt lines, previews, a line refund, `CopyProgramAsync`, the branch QR and the
+  key's refusal to freeze. It prints passed/failed per area and
   exits non-zero on any failure.
 - The reset runs at most 5 times a day per business (`429 RATE_LIMITED`).
-- Out of scope until the 0.3.0 regeneration: `tests/Rewloy.Tests/Live/TODO.md`.
+- Not covered: `tests/Rewloy.Tests/Live/TODO.md` (among them freezing a branch,
+  which needs a team session and the owner's password).
 
 ### Security and licence
 

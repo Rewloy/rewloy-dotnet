@@ -16,7 +16,7 @@ namespace Rewloy
     /// </summary>
     public sealed class PassEventData : RewloyObject
     {
-        /// <summary>What happened on the card: <c>join</c>, <c>earn</c>, <c>redeem</c>, <c>spend</c>, <c>visit_credit</c>, <c>load</c>, <c>void</c>...</summary>
+        /// <summary>What happened on the card: <c>join</c>, <c>earn</c>, <c>redeem</c>, <c>spend</c>, <c>visit_credit</c>, <c>load</c>, <c>void</c>, <c>expiry_extended</c>...</summary>
         [JsonPropertyName("kind")]
         public string Kind { get; set; } = string.Empty;
 
@@ -44,7 +44,46 @@ namespace Rewloy
         [JsonPropertyName("delta")]
         public double? Delta { get; set; }
 
-        /// <summary>Why, for a void.</summary>
+        /// <summary>Why: for a void, and for the <c>adjust</c> of a reversal (<c>sale_reversed</c>, <c>action_reversed</c>, <c>refund</c>); for <c>pass.extended</c> <c>merchant</c> or <c>branch_frozen</c> (API 1.3.0).</summary>
+        [JsonPropertyName("reason")]
+        public string? Reason { get; set; }
+
+        /// <summary><c>pass.extended</c> (API 1.3.0): the card's last day before it moved, ISO 8601.</summary>
+        [JsonPropertyName("from")]
+        public string? From { get; set; }
+
+        /// <summary><c>pass.extended</c> (API 1.3.0): the card's new last day, ISO 8601. A card's end never moves earlier.</summary>
+        [JsonPropertyName("to")]
+        public string? To { get; set; }
+
+        /// <summary>API 1.3.0: <c>true</c> when a <c>sale_reversed</c> adjustment took back only some of the sale's lines (a line refund), not the whole sale.</summary>
+        [JsonPropertyName("partial")]
+        public bool? Partial { get; set; }
+    }
+
+    /// <summary>
+    /// What a webhook's <c>data</c> holds for the <c>location.frozen</c>, <c>location.unfrozen</c>, <c>business.paused</c> and
+    /// <c>business.resumed</c> events (API 1.3.0). They are not about a card: <c>card</c> and <c>customer_id</c> are <c>null</c>.
+    /// </summary>
+    public sealed class LocationEventData : RewloyObject
+    {
+        /// <summary>What happened: <c>location_frozen</c>, <c>location_unfrozen</c>, <c>business_paused</c> or <c>business_resumed</c>.</summary>
+        [JsonPropertyName("kind")]
+        public string Kind { get; set; } = string.Empty;
+
+        /// <summary>The branch's id.</summary>
+        [JsonPropertyName("location_id")]
+        public string? LocationId { get; set; }
+
+        /// <summary>The first day of the freeze (<c>YYYY-MM-DD</c>), when the event says.</summary>
+        [JsonPropertyName("startsOn")]
+        public string? StartsOn { get; set; }
+
+        /// <summary>The day the branch reopens (<c>YYYY-MM-DD</c>), when it is known.</summary>
+        [JsonPropertyName("reopensOn")]
+        public string? ReopensOn { get; set; }
+
+        /// <summary>Why the branch was frozen or reopened, when the event says.</summary>
         [JsonPropertyName("reason")]
         public string? Reason { get; set; }
     }
@@ -66,7 +105,7 @@ namespace Rewloy
         /// <summary>The event's id; <c>null</c> for the test delivery.</summary>
         public string? Id => Text("id");
 
-        /// <summary>The event type: <c>pass.issued</c>, <c>pass.activity</c>, <c>pass.voided</c> or <c>webhook.test</c> (the panel's or <c>testWebhook</c>'s test delivery). Same as the <c>Rewloy-Event</c> header.</summary>
+        /// <summary>The event type: <c>pass.issued</c>, <c>pass.activity</c>, <c>pass.voided</c>, <c>pass.extended</c>, <c>location.frozen</c>, <c>location.unfrozen</c>, <c>business.paused</c>, <c>business.resumed</c> or <c>webhook.test</c> (the panel's or <c>testWebhook</c>'s test delivery). Same as the <c>Rewloy-Event</c> header.</summary>
         public string Type => Text("type") ?? string.Empty;
 
         /// <summary>When it happened (<c>created_at</c>), when the body says and it parses.</summary>
@@ -82,6 +121,14 @@ namespace Rewloy
         /// </summary>
         public PassEventData? PassData =>
             Type.StartsWith("pass.", StringComparison.Ordinal) && Data.ValueKind == JsonValueKind.Object ? Data.Deserialize<PassEventData>(RewloyJson.Options) : null;
+
+        /// <summary>
+        /// The <c>data</c> of a <c>location.*</c> or <c>business.*</c> event (API 1.3.0); <c>null</c> for any other type
+        /// or a <c>data</c> that is not an object.
+        /// </summary>
+        public LocationEventData? LocationData =>
+            (Type.StartsWith("location.", StringComparison.Ordinal) || Type.StartsWith("business.", StringComparison.Ordinal)) && Data.ValueKind == JsonValueKind.Object
+                ? Data.Deserialize<LocationEventData>(RewloyJson.Options) : null;
 
         private string? Text(string name) => Root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Rewloy.Models;
@@ -52,6 +51,7 @@ namespace Rewloy.Tests.Live
             log("Live tests against " + baseUrl + " (" + biz.Data.Name + ", dev, test key), run " + tag);
 
             Guid locationId = Guid.Empty;
+            string branchCode = "";
             Guid stampId = Guid.Empty, giftId = Guid.Empty, batchProgramId = Guid.Empty;
             string stampName = "LT damga " + tag, giftName = "LT hediye " + tag, batchProgName = "LT kod " + tag;
             string stampSerial = "", stampSerial2 = "", giftSerial = "";
@@ -356,6 +356,231 @@ namespace Rewloy.Tests.Live
                     Assert.True(row?.State == "archived" || row?.State == "closed", "state " + row?.State); // archiving closes open codes
                 });
 
+                // ---------------------------------------------------------------- earn rules (API 1.3.0)
+                Guid earnProgramId = Guid.Empty, earnGroupId = Guid.Empty;
+                string earnProgramName = "LT kural " + tag, earnSerial = "";
+                string earnSku = "LT-KAHVE-" + tag.ToUpperInvariant();
+                string earnSaleKey = "lt-" + tag + "-earn-sale";
+                var receipt = new[]
+                {
+                    new RecordSaleBodyLinesItem { LineId = "1", Name = "Filtre kahve", Sku = earnSku, Quantity = JsonSerializer.SerializeToElement(2), UnitPriceMinor = 6000, Category = JsonSerializer.SerializeToElement("İçecek > Sıcak") },
+                    new RecordSaleBodyLinesItem { LineId = "2", Name = "Kek", Sku = "LT-KEK", UnitPriceMinor = 4000 },
+                };
+                await run.Check("earn", "list the starter templates (stamp) and the groups", async () =>
+                {
+                    var templates = await rw.ListEarnTemplatesAsync(new ListEarnTemplatesQuery { Type = "stamp" });
+                    Assert.All(templates, t => { Assert.False(string.IsNullOrEmpty(t.Id)); Assert.False(string.IsNullOrEmpty(t.Text)); });
+                    Assert.NotNull(await rw.ListEarnGroupsAsync());
+                });
+                await run.Check("earn", "create a product group by SKU, get and list it, rename it", async () =>
+                {
+                    var g = await rw.CreateEarnGroupAsync(new CreateEarnGroupBody { Name = "LT kahveler " + tag, Members = new[] { new CreateEarnGroupBodyMembersItem { Effect = "include", Match = "sku", Value = earnSku } } });
+                    earnGroupId = g.Id;
+                    cleanup.Add(("group " + g.Name, async () => { try { await rw.DeleteEarnGroupAsync(earnGroupId); } catch (RewloyException x) when (x.Status == 404 || x.Status == 409) { } }));
+                    Assert.Single(g.Members);
+                    var one = await rw.GetEarnGroupAsync(earnGroupId);
+                    Assert.Equal(g.Name, one.Name);
+                    Assert.Contains(await rw.ListEarnGroupsAsync(), x => x.Id == earnGroupId);
+                    var renamed = await rw.UpdateEarnGroupAsync(earnGroupId, new UpdateEarnGroupBody { Name = "LT kahve " + tag });
+                    Assert.Equal("LT kahve " + tag, renamed.Name);
+                });
+                await run.Check("earn", "create a stamp program and put a rule set: one stamp per unit of the group", async () =>
+                {
+                    var p = await rw.CreateProgramAsync(new CreateProgramBody { Type = "stamp", BusinessName = "LT Kafe", ProgramName = earnProgramName, MaxStamps = 10, RewardName = "Bedava kahve" });
+                    earnProgramId = p.Id;
+                    cleanup.Add(("program " + earnProgramName, () => RemoveProgram(rw, earnProgramId, earnProgramName)));
+                    var before = await rw.GetEarnRulesAsync(earnProgramId);
+                    Assert.Equal(0, before.Revision);
+                    var put = await rw.PutEarnRulesAsync(earnProgramId, new PutEarnRulesBody
+                    {
+                        Revision = 0,
+                        Settings = new PutEarnRulesBodySettings { NoLines = "none" },
+                        Rules = new[] { new PutEarnRulesBodyRulesItem { Kind = "stamp.perUnit", GroupId = earnGroupId, Stamps = 1 } },
+                    });
+                    Assert.Equal(1, put.Revision);
+                    var got = await rw.GetEarnRulesAsync(earnProgramId);
+                    Assert.True(got.Active);
+                    Assert.Single(got.Rules);
+                    Assert.False(string.IsNullOrEmpty(got.Text));
+                    var revisions = await rw.ListEarnRuleRevisionsAsync(earnProgramId);
+                    Assert.NotEmpty(revisions.Data);
+                });
+                await run.Check("earn", "a stale revision is refused: REVISION_CONFLICT", async () =>
+                {
+                    var e = await Refused(() => rw.PutEarnRulesAsync(earnProgramId, new PutEarnRulesBody { Revision = 0, Rules = Array.Empty<PutEarnRulesBodyRulesItem>() }));
+                    Assert.Equal(409, e.Status);
+                    Assert.Equal(ErrorCode.RevisionConflict, e.Code);
+                });
+                await run.Check("earn", "a points rule on a stamp program is refused: RULE_KIND_NOT_FOR_TYPE", async () =>
+                {
+                    var current = (int)(await rw.GetEarnRulesAsync(earnProgramId)).Revision;
+                    var e = await Refused(() => rw.PutEarnRulesAsync(earnProgramId, new PutEarnRulesBody { Revision = current, Rules = new[] { new PutEarnRulesBodyRulesItem { Kind = "points.rate", Points = 1, EveryMinor = 100 } } }));
+                    Assert.Equal(422, e.Status);
+                    Assert.Equal(ErrorCode.RuleKindNotForType, e.Code);
+                });
+                await run.Check("earn", "previewEarn explains a receipt without a card and writes nothing", async () =>
+                {
+                    var r = await rw.PreviewEarnAsync(earnProgramId, new PreviewEarnBody { AmountMinor = 16000, Lines = receipt.Select(l => new PreviewEarnBodyLinesItem { LineId = l.LineId, Name = l.Name, Sku = l.Sku, Quantity = l.Quantity, UnitPriceMinor = l.UnitPriceMinor }).ToList() });
+                    Assert.Equal(2, r.Credited);
+                    Assert.Equal("stamps", r.Unit);
+                    Assert.Equal(2, r.Earn.Lines.Count);
+                    Assert.Equal(2, r.Earn.Lines.Single(l => l.LineId == "1").Earned);
+                    Assert.Equal(0, r.Earn.Lines.Single(l => l.LineId == "2").Earned);
+                    Assert.NotEmpty(r.Earn.Rules);
+                    Assert.Equal(2, r.Earn.Total.Credited);
+                });
+                await run.Check("earn", "previewEarn with a draft rule set (ruleSet): earn.revision is null", async () =>
+                {
+                    var r = await rw.PreviewEarnAsync(earnProgramId, new PreviewEarnBody
+                    {
+                        AmountMinor = 12000,
+                        Lines = new[] { new PreviewEarnBodyLinesItem { LineId = "1", Name = "Filtre kahve", Sku = earnSku, Quantity = JsonSerializer.SerializeToElement(2), UnitPriceMinor = 6000 } },
+                        RuleSet = new PreviewEarnBodyRuleSet { Rules = new[] { new PreviewEarnBodyRuleSetRulesItem { Kind = "stamp.perReceipt", Stamps = 3 } } },
+                    });
+                    Assert.Equal(3, r.Credited);
+                    Assert.Null(r.Earn.Revision);
+                });
+                await run.Check("earn", "issue a card; previewSale shows what the sale would write and changes nothing", async () =>
+                {
+                    earnSerial = (await rw.IssuePassAsync(new IssuePassBody { ProgramId = earnProgramId, Email = "lt-" + tag + "-earn@example.com", FirstName = "Kemal", KvkkConsent = true })).Serial;
+                    var p = await rw.PreviewSaleAsync(earnSerial, new PreviewSaleBody { LocationId = locationId, AmountMinor = 16000, Lines = receipt.Select(l => new PreviewSaleBodyLinesItem { LineId = l.LineId, Name = l.Name, Sku = l.Sku, Quantity = l.Quantity, UnitPriceMinor = l.UnitPriceMinor }).ToList() });
+                    Assert.True(p.Preview);
+                    Assert.False(p.Duplicate);
+                    Assert.Equal(2, p.Credited);
+                    Assert.NotNull(p.Earn);
+                    Assert.Equal(0, (await rw.GetPassAsync(earnSerial)).Stamps!.Count);
+                    Assert.Equal(0, (await rw.ListPassOperationsAsync(earnSerial)).Meta.Total);
+                });
+                await run.Check("earn", "recordSale with receipt lines: credited by the rule, with the earn explanation", async () =>
+                {
+                    var r = await rw.RecordSaleWithResponseAsync(earnSerial,
+                        new RecordSaleBody { LocationId = locationId, AmountMinor = 16000, Reference = "fis-earn-" + tag, Lines = receipt },
+                        new RequestOptions { IdempotencyKey = earnSaleKey });
+                    Assert.Equal(200, r.StatusCode);
+                    Assert.False(r.Data.Duplicate);
+                    Assert.Equal(2, r.Data.Credited);
+                    Assert.NotNull(r.Data.Earn);
+                    var earn = r.Data.Earn!;
+                    Assert.Equal("stamps", earn.Unit);
+                    Assert.Equal(1, earn.Revision);
+                    Assert.Equal(2, earn.Total.Credited);
+                    Assert.Contains(earn.Lines, l => l.LineId == "1" && l.Earned == 2);
+                    Assert.Contains(earn.Rules, x => x.Kind == "stamp.perUnit" && x.Units == 2);
+                    Assert.Equal(2, r.Data.Card!.Stamps!.Count);
+                });
+                await run.Check("earn", "the same sale key replays the sale", async () =>
+                {
+                    var again = await rw.RecordSaleAsync(earnSerial,
+                        new RecordSaleBody { LocationId = locationId, AmountMinor = 16000, Reference = "fis-earn-" + tag, Lines = receipt },
+                        new RequestOptions { IdempotencyKey = earnSaleKey });
+                    Assert.True(again.Duplicate);
+                    Assert.Equal(2, again.Credited);
+                });
+                await run.Check("earn", "a line refund takes back one cup: reverseSale with lines", async () =>
+                {
+                    // A line refund needs an Idempotency-Key (one refund, one key: two refunds of one latte are two keys).
+                    var refund = new ReverseSaleBody { SaleKey = earnSaleKey, Lines = new[] { new ReverseSaleBodyLinesItem { LineId = "1", Quantity = JsonSerializer.SerializeToElement(1) } } };
+                    var options = new RequestOptions { IdempotencyKey = "lt-" + tag + "-refund-1" };
+                    var r = await rw.ReverseSaleAsync(earnSerial, refund, options);
+                    Assert.False(r.Duplicate);
+                    Assert.Equal(1, r.Reversed);
+                    Assert.NotNull(r.Earn);
+                    Assert.Equal(1, (await rw.GetPassAsync(earnSerial)).Stamps!.Count);
+                    Assert.NotNull(r.LinesLeft);
+                    var again = await rw.ReverseSaleAsync(earnSerial, refund, options);
+                    Assert.True(again.Duplicate);
+                    Assert.Equal(1, (await rw.GetPassAsync(earnSerial)).Stamps!.Count);
+                });
+                await run.Check("earn", "a receipt line with a unit the schema does not know is refused: VALIDATION", async () =>
+                {
+                    var e = await Refused(() => rw.PreviewSaleAsync(earnSerial, new PreviewSaleBody { AmountMinor = 100, Lines = new[] { new PreviewSaleBodyLinesItem { Name = "x", UnitPriceMinor = 100, Unit = "bogus" } } }));
+                    Assert.Equal(400, e.Status);
+                    Assert.Equal(ErrorCode.Validation, e.Code);
+                });
+                await run.Check("earn", "seen lines and sources are listable; deleting the rules goes back to the old earning", async () =>
+                {
+                    var seen = await rw.ListSeenLinesAsync();
+                    Assert.True(seen.Meta.Total >= 0);
+                    Assert.NotNull(await rw.ListEarnSourcesAsync());
+                    await rw.DeleteEarnRulesAsync(earnProgramId);
+                    Assert.False((await rw.GetEarnRulesAsync(earnProgramId)).Active);
+                });
+
+                // ---------------------------------------------------------------- gift card copies
+                await run.Check("copy", "copyProgram of a loyalty card is refused: NOT_AN_INSTRUMENT", async () =>
+                {
+                    var e = await Refused(() => rw.CopyProgramAsync(stampId, new CopyProgramBody { Name = "LT kopya " + tag }));
+                    Assert.Equal(422, e.Status);
+                    Assert.Equal(ErrorCode.NotAnInstrument, e.Code);
+                });
+                await run.Check("copy", "copyProgram of a gift card makes a new programme", async () =>
+                {
+                    var name = "LT hediye kopya " + tag;
+                    var copy = await rw.CopyProgramAsync(giftId, new CopyProgramBody { Name = name });
+                    cleanup.Add(("program " + name, () => RemoveProgram(rw, copy.Id, name)));
+                    Assert.NotEqual(giftId, copy.Id);
+                    Assert.Equal("giftcard", copy.Type);
+                    Assert.Equal(name, copy.ProgramName);
+                });
+
+                // ---------------------------------------------------------------- branch QR (API 1.3.0)
+                await run.Check("branch-qr", "the branch carries its QR (code, url, state)", async () =>
+                {
+                    var loc = await rw.GetLocationAsync(locationId);
+                    Assert.False(string.IsNullOrEmpty(loc.Qr.Code));
+                    Assert.False(string.IsNullOrEmpty(loc.Qr.Url));
+                    Assert.False(string.IsNullOrEmpty(loc.Qr.State));
+                    branchCode = loc.Qr.Code;
+                });
+                await run.Check("branch-qr", "publicBranch reads the page without a key", async () =>
+                {
+                    using var anon = new RewloyClient(new RewloyClientOptions { BaseUrl = baseUrl, MaxRetries = 0 });
+                    var page = await anon.PublicBranchAsync(branchCode);
+                    Assert.Equal(branchCode, page.Code);
+                    Assert.False(string.IsNullOrEmpty(page.Branch.Name));
+                    Assert.False(string.IsNullOrEmpty(page.Branch.State));
+                    Assert.True(page.Test);
+                    Assert.NotNull(page.Items);
+                });
+                await run.Check("branch-qr", "an unknown branch code: BRANCH_NOT_FOUND 404", async () =>
+                {
+                    var e = await Refused(() => rw.PublicBranchAsync("zzzzzzzzzzzz"));
+                    Assert.Equal(404, e.Status);
+                    Assert.Equal(ErrorCode.BranchNotFound, e.Code);
+                });
+                await run.Check("branch-qr", "previewLocationQr answers like the public page", async () =>
+                {
+                    var pv = await rw.PreviewLocationQrAsync(locationId);
+                    Assert.Equal(branchCode, pv.Code);
+                });
+                await run.Check("branch-qr", "the QR downloads: SVG, PNG, A4 sheet as PDF and SVG, the programme join QR for the branch", async () =>
+                {
+                    var svg = await rw.LocationQrSvgAsync(locationId);
+                    Assert.Contains("svg", svg.ContentType ?? "");
+                    Assert.Contains("<svg", System.Text.Encoding.UTF8.GetString(svg.Content));
+                    var png = await rw.LocationQrPngAsync(locationId, new LocationQrPngQuery { Size = 512 });
+                    Assert.Equal("image/png", png.ContentType);
+                    Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, png.Content.Take(4).ToArray());
+                    var pdf = await rw.LocationQrSheetPdfAsync(locationId);
+                    Assert.Equal("application/pdf", pdf.ContentType);
+                    Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf.Content.Take(4).ToArray()));
+                    var sheet = await rw.LocationQrSheetSvgAsync(locationId);
+                    Assert.Contains("<svg", System.Text.Encoding.UTF8.GetString(sheet.Content));
+                    var join = await rw.ProgramJoinQrAsync(stampId, new ProgramJoinQrQuery { BranchCode = branchCode });
+                    Assert.True(join.Content.Length > 0);
+                });
+                await run.Check("branch-qr", "the QR list of the branch is readable", async () =>
+                {
+                    Assert.NotNull(await rw.GetLocationQrItemsAsync(locationId));
+                });
+                await run.Check("branch-qr", "freezing is for a team session with the password, not a key: CREDENTIAL_NOT_ALLOWED", async () =>
+                {
+                    var e = await Refused(() => rw.FreezeLocationAsync(locationId, new FreezeLocationBody { Reason = "renovation", Password = "not-the-password" }));
+                    Assert.Equal(403, e.Status);
+                    Assert.Equal(ErrorCode.CredentialNotAllowed, e.Code);
+                });
+                run.Skip("branch-qr", "freeze, LOCATION_FROZEN and BUSINESS_FROZEN on a sale", "freezing needs a team session and the owner's password; the suite never holds a password");
+
                 // ---------------------------------------------------------------- webhooks
                 await run.Check("webhooks", "events catalogue is readable", async () =>
                 {
@@ -544,14 +769,8 @@ namespace Rewloy.Tests.Live
 
         // ------------------------------------------------------------------ helpers
 
-        /// <summary>environment from GET /v1/meta: a typed property if the regenerated library has one, else the raw field.</summary>
-        private static string? EnvironmentOf(GetMetaData data)
-        {
-            var typed = data.GetType().GetProperty("Environment", BindingFlags.Public | BindingFlags.Instance);
-            if (typed != null && typed.GetValue(data) is string s) return s;
-            if (data.AdditionalProperties != null && data.AdditionalProperties.TryGetValue("environment", out var el) && el.ValueKind == JsonValueKind.String) return el.GetString();
-            return null;
-        }
+        /// <summary>environment from GET /v1/meta (typed since API 1.3.0): empty or missing counts as not known.</summary>
+        private static string? EnvironmentOf(GetMetaData data) => string.IsNullOrEmpty(data.Environment) ? null : data.Environment;
 
         private static async Task<RewloyException> Refused<T>(Func<Task<T>> call)
         {

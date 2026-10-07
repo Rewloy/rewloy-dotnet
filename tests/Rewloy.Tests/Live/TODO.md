@@ -1,21 +1,28 @@
-# Live suite: not covered yet (for the 0.3.0 regeneration)
+# Live suite: not covered yet
 
-The suite follows library 0.2.4 / API 1.2.x. The API 1.3.0 additions below have no
-method in 0.2.4, so they are not exercised; add them when the library is regenerated:
+The suite follows library 0.3.0 / API 1.3.0. Receipt lines with an earn rule set,
+`PreviewEarnAsync` / `PreviewSaleAsync`, the earn explanation, a line refund, the
+branch QR (public page and the downloads), `CopyProgramAsync` and the typed
+`Environment` of `GET /v1/meta` are covered. Not covered, and why:
 
-- Earn rules (groups, one line-item schema) and `recordSale` with **receipt lines**
-  (0.2.4's `RecordSaleBody` has no lines; today the suite covers a sale with and
-  without `Reference` and with and without a branch).
-- Branch QR: one QR per branch, curated/seasonal programmes, session-reuse multi-join,
-  code cards single-entry, branch freeze.
-- The typed `Environment` field of `GET /v1/meta` (0.2.4 has it only in
-  `AdditionalProperties`; the guard reads it by reflection first, then from there).
+- **Branch freeze** (`FreezeLocationAsync`, `UnfreezeLocationAsync`, the freeze list
+  and edits) and so `LOCATION_FROZEN` / `BUSINESS_FROZEN` on a sale or a preview: a
+  freeze needs a team session **and the owner's password** (a key is
+  `CREDENTIAL_NOT_ALLOWED`, which the suite does check); the suite never holds a
+  password. A freeze also counts against the branch's four-per-year limit.
+- Branch QR writes: `PutLocationQrItemsAsync`, `AddQrItemsAsync`, session-reuse
+  multi-join (`JoinHolderBranchAsync`, needs a holder session), code cards
+  single-entry (`ProofRequired`), `UpdateBatchAsync`, `ExtendProgramCardsAsync`.
+- Earn rules beyond a stamp rule: points / cashback / VIP rules and caps,
+  `CreateEarnRuleAsync` / `UpdateEarnRuleAsync` single-rule edits, ignoring seen lines,
+  a receipt from a shop (source-bound group members).
 - `SendBatchLink` refusals `BATCH_EXPIRED` and `BATCH_FULL` (need a code that has
   expired or run out of cards: a public claim and a past `ValidUntil`) and
-  `PROGRAM_ARCHIVED` on send (on 1.2.2 archiving closes the program's open codes, so the
-  server answers `BATCH_CLOSED` first; the suite accepts either).
+  `PROGRAM_ARCHIVED` on send (on 1.2.2 and later archiving closes the program's open
+  codes, so the server answers `BATCH_CLOSED` first; the suite accepts either).
 - Webhook delivery itself (`TestWebhookAsync`, deliveries, signature verification
-  against a received delivery): needs a public https receiver.
+  against a received delivery, the new `pass.extended` / `location.*` events): needs a
+  public https receiver.
 - Live event stream (SSE), holder (Cuzdan) sessions, team/roles, campaigns,
   automations, segments, shops/checkout cards, POS keys, locations management.
 - The netstandard2.0 asset (the suite runs on the net8.0 library build).

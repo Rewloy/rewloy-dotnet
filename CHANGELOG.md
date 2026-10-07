@@ -5,6 +5,112 @@ https://rewloy.com/gelistiriciler/degisiklikler
 
 This library's releases. The API's own changes are listed at the link above.
 
+## 0.3.0 (2026-10-07)
+
+Rewloy API 1.3.0'ı izler (API sürümü, `info.version`): 298 işlem (0.2.4'te
+260), hiçbiri kaldırılmadı. Kazanım kuralları (ürün grupları, kurallar,
+önizleme), fiş satırlarıyla satış ve satır iadesi, şube QR'ı (herkese açık şube
+sayfası, QR görüntüsü ve afişi, QR listesi), şube dondurma ve `LOCATION_FROZEN` /
+`BUSINESS_FROZEN` hataları, hediye kartı kopyası ve `NOT_AN_INSTRUMENT`,
+yeni webhook olayları (`pass.extended`, `location.frozen`, `location.unfrozen`,
+`business.paused`, `business.resumed`). Beş kütüphane 0.3.0'da aynı sürüme gelir.
+
+Follows Rewloy API 1.3.0 (the product version in `info.version`): 298
+operations (260 in 0.2.4), none removed. All five client libraries are 0.3.0.
+Additive: every 0.2.4 call keeps compiling and doing the same; the only change
+a caller can notice is listed under "Compatibility" below.
+
+- **Earn rules (new operations).** Product groups of the business:
+  `ListEarnGroupsAsync`, `CreateEarnGroupAsync`, `GetEarnGroupAsync`,
+  `UpdateEarnGroupAsync`, `DeleteEarnGroupAsync`, the categories receipts brought
+  in the last 30 days (`ListSeenLinesAsync`, `IgnoreSeenLineAsync`,
+  `UnignoreSeenLineAsync`) and the till sources behind them
+  (`ListEarnSourcesAsync`). A programme's rules: `GetEarnRulesAsync`,
+  `PutEarnRulesAsync` (the whole rule set; `Revision` is the revision you read,
+  a newer one is `409 REVISION_CONFLICT`), `CreateEarnRuleAsync`,
+  `UpdateEarnRuleAsync`, `DeleteEarnRuleAsync`, `DeleteEarnRulesAsync` (back to
+  the earning before 1.3.0), `ListEarnRuleRevisionsAsync`, and the starting
+  points `ListEarnTemplatesAsync`. A rule that does not fit the card type is
+  `422 RULE_KIND_NOT_FOR_TYPE`; `EARN_RULE_NOT_FOUND` and `EARN_RULES_NOT_FOUND`
+  are typed too.
+- **Receipt lines.** `RecordSaleBody.Lines` (`RecordSaleBodyLinesItem`: `LineId`,
+  `Name`, `Sku`, `Category`, `Quantity`, `Unit`, `UnitPriceMinor`,
+  `DiscountMinor`, `TotalMinor`, `Kind`, `Tags`) and `ReceiptDiscountMinor`; more
+  than 500 lines is `422 TOO_MANY_LINES`. The answer carries **`Earn`**, the
+  explanation of the credit: per line (`Status`, `Groups`, `Rule`, `Earned`…),
+  per rule (`Kind`, `Units`, `Text`) and the total (`BeforeRounding`, `Rounded`,
+  `Caps`, `Credited`), with the rule `Revision` and the `Source` of the rules.
+  `ReverseSaleAsync` answers with `Earn` and `LinesLeft` too.
+- **Previews (new operations).** `PreviewSaleAsync(serial, body)` is `RecordSaleAsync`
+  without writing: the same body and answer plus `Preview = true`, no
+  `Idempotency-Key` needed. `PreviewEarnAsync(programId, body)` explains a receipt
+  without a card, optionally with a draft rule set (`RuleSet`, `Earn.Revision`
+  is `null`) and a card's state (`Context`). Both refuse like the sale does
+  (`LOCATION_FROZEN`, `BUSINESS_FROZEN`, currency, lines).
+- **Line refunds.** `ReverseSaleBody.Lines` (`ReverseSaleBodyLinesItem`: `LineId`,
+  `Quantity`, `AmountMinor`) takes back some lines of a sale: the sale is judged
+  again with the rules of the day it was made and only the difference is taken
+  back. A line refund needs an `Idempotency-Key` (the library makes one up for
+  you where the header is optional, but pass your own: one refund, one key).
+  `LINE_NOT_FOUND`, `LINE_ALREADY_REFUNDED`, `LINE_AMOUNT_INVALID`.
+- **`PassActionBody.BillMinor`** with `spend`: the whole bill the cashback is
+  part-paying, for the programme's `spendShareMaxPct` (`BILL_REQUIRED`,
+  `SPEND_SHARE_EXCEEDED`).
+- **Branch QR (new operations).** `PublicBranchAsync(code)` is the page the QR opens
+  (no credential needed), `PreviewLocationQrAsync(id)` the same for a chosen day,
+  `HolderBranchAsync` / `JoinHolderBranchAsync` its holder side;
+  `LocationQrSvgAsync`, `LocationQrPngAsync(id, new LocationQrPngQuery { Size = … })`,
+  `LocationQrSheetPdfAsync` and `LocationQrSheetSvgAsync` return the QR and the
+  A4 sheet as a `RewloyFile`; the branch's card list: `GetLocationQrItemsAsync`,
+  `PutLocationQrItemsAsync`, and one card on several branches `AddQrItemsAsync`.
+  A location row carries `Qr` (`Code`, `Url`, `State`), `Frozen` and
+  `Stats.QrCards30`; `CreateLocationBody` takes `ProgramIds` and `QrListFrom`;
+  `JoinProgramBody` and `JoinHolderProgramBody` / `ClaimHolderCodeBody` take the
+  branch (`LocationId` / `BranchCode`), a code's `PublicCode` answer says
+  `ClaimOpensOn`, `ClaimUntil`, `ProofRequired`, `BranchNames`, `Terms`, `Validity`.
+  New errors: `BRANCH_NOT_FOUND`, `BRANCH_GONE`, `ITEM_NOT_OFFERED`,
+  `PROOF_REQUIRED`, `QR_LIST_CHANGED`, `QR_ITEM_INVALID`, `NOT_VALID_HERE`.
+- **Branch freeze (new operations).** `FreezeLocationAsync`, `UnfreezeLocationAsync`,
+  `UpdateLocationFreezeAsync`, `CancelLocationFreezeAsync`,
+  `ListLocationFreezesAsync`: a team session with the person's password only
+  (a key is `403 CREDENTIAL_NOT_ALLOWED`). A frozen branch's till refuses
+  `409 LOCATION_FROZEN`; with every branch frozen the business pauses
+  (`409 BUSINESS_FROZEN`). Also `ALREADY_FROZEN`, `NOT_FROZEN`,
+  `LOCATION_ARCHIVED`, `FREEZE_LIMIT`, `FREEZE_STARTED`. `GetPassTillAsync`
+  says `Frozen` (`ReopensOn`); `GetPlanAsync` has `Billing.Days`.
+- **Copies and card terms.** `CopyProgramAsync` copies a gift card, coupon or
+  discount card with other terms; a loyalty card is `422 NOT_AN_INSTRUMENT`.
+  `ExtendProgramCardsAsync` lengthens the open cards' last day (`Extended`, `Until`);
+  `UpdateBatchAsync` edits a code after it was made. `CreateProgramBody` and
+  `UpdateProgramBody` take `GiftValueMinor`,
+  `OfferValueMinor`, `Usage`, `UsageLimit`, `Terms`, `Validity` and `JoinWindow`;
+  `CreateBatchBody` takes `Channels`, `ClaimFrom`, `ClaimUntil`, `ProofRequired`
+  and `QrLocationIds`, and batch rows say `Channels`, `ClaimFrom`, `ClaimUntil`,
+  `QrCount`. Programme rows carry `Sale.Text` / `Sale.Rules` (what a sale earns,
+  in words); shop rows carry `Lines` (`LastAt`, `Problem`, `ProblemAt`) and
+  `ListShopOrdersAsync` rows `EarnSource`; `HolderCardAsync` has `Notices`.
+- **`GetMetaData.Environment`** is typed (`live` or `dev`; it was only in
+  `AdditionalProperties`). The live test suite reads it from there.
+- **Webhooks.** New events: `pass.extended` (a card's last day moved later; `PassEventData.From`
+  / `To`, `Reason` `merchant` or `branch_frozen`), `location.frozen`, `location.unfrozen`,
+  `business.paused` and `business.resumed` (read with the new `WebhookEvent.LocationData`,
+  a `LocationEventData`; `card` and `customer_id` are null). `PassEventData.Partial` is
+  `true` on the adjustment of a line refund.
+- **Compatibility.** `ProgramJoinQrAsync` (and `…WithResponseAsync`) gained a
+  `ProgramJoinQrQuery` (`BranchCode`, `Format` `svg` or `png`) in the place of
+  `options`. A call `ProgramJoinQrAsync(id, options)` still compiles through a
+  hand-written overload (`RewloyClient.Compat.cs`) and does the same; `ProgramJoinQrAsync(id)`
+  is unchanged. Models stay lenient: fields the API sends that a class does not
+  know land in `AdditionalProperties`, and the fields the API now always
+  sends are non-nullable properties that stay at their default when an older server
+  leaves them out.
+- **Live suite.** `tests/Rewloy.Tests/Live` now also runs receipt lines with an earn
+  rule set (group + stamp rule), `PreviewEarnAsync` and `PreviewSaleAsync`, the
+  earn explanation, a line refund and its replay, rule errors, `CopyProgramAsync`
+  (refusal for a loyalty card), the branch QR (public page, SVG / PNG / PDF /
+  sheet downloads, unknown code) and the key's refusal to freeze. Freezing itself
+  needs a password and is not run.
+
 ## 0.2.4 (2026-10-06)
 
 Rewloy API 1.2.0'ı izler (API sürümü, `info.version`): 260 işlem (0.2.2'de 256),

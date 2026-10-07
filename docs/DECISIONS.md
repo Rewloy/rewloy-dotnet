@@ -278,3 +278,20 @@ regeneration workflow (24).
     Trusted Publishing (`NuGet/login@v1`, environment `nuget`, the policy
     creator's username in the repository variable `NUGET_USER`). No API key
     is stored. The setup is in the file's header.
+
+## 0.3.0 (Rewloy API 1.3.0)
+
+34. **A query added to an existing operation is a source break, so it is bridged by hand.**
+    API 1.3.0 gave `programJoinQr` a query (`branchCode`, `format`). The generator puts
+    the query before `options`, so `ProgramJoinQrAsync(id, options)` of 0.2.4 would not
+    compile. `RewloyClient.Compat.cs` keeps that call with a non-optional `options`
+    overload (so `ProgramJoinQrAsync(id)` still means the generated method). It is the only
+    such case in 1.3.0; the next one gets the same treatment, or a break in the CHANGELOG.
+35. **`LocationEventData` next to `PassEventData`.** The `location.*` and `business.*`
+    webhook events are not about a card (`card` and `customer_id` are null), so they have
+    their own typed `data` (`WebhookEvent.LocationData`); `PassData` stays `null` for them,
+    as it was for any non-`pass.*` type.
+36. **The live suite never freezes a branch.** Freezing needs a team session and the owner's
+    password and counts against the branch's four-a-year limit; the suite holds no password.
+    It checks that a key is refused (`CREDENTIAL_NOT_ALLOWED`) and lists the rest in
+    `tests/Rewloy.Tests/Live/TODO.md`.
