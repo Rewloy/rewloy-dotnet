@@ -660,10 +660,40 @@ dotnet pack src/Rewloy -c Release                              # NuGet paketi (y
 
 - `src/Rewloy/Generated/` elle düzenlenmez; üreteç `tools/Rewloy.Generator`dır
   (C#, yalnız .NET SDK ister).
-- Testler ağa çıkmaz. Üretimin belirleyici olduğunu ve işlenmiş çıktının
+- Testler ağa çıkmaz (isteğe bağlı canlı takım hariç, aşağıda). Üretimin belirleyici olduğunu ve işlenmiş çıktının
   güncel olduğunu da sınarlar.
 - CI her gün canlı belgeyi okur ve bir değişiklik varsa bir pull request açar.
 - Kararlar: [docs/DECISIONS.md](https://github.com/Rewloy/rewloy-dotnet/blob/main/docs/DECISIONS.md).
+
+### Canlı testler
+
+Kütüphaneyi gerçek bir Rewloy **geliştirme (dev) sunucusuna** karşı uçtan uca
+sınayan ayrı bir takım vardır (`tests/Rewloy.Tests/Live`, `Category=Live`).
+Yayın adayı canlıya geçmeden önce bu sunucuda sınanır. Ortam değişkenleri
+yoksa **atlanır** (başarısız sayılmaz), yani `dotnet test` değişmez.
+
+```sh
+REWLOY_BASE_URL=https://dev-sunucunuz REWLOY_API_KEY=rwk_test_… \
+  dotnet test tests/Rewloy.Tests -f net10.0 --filter Category=Live --logger "console;verbosity=detailed"
+```
+
+- `REWLOY_BASE_URL`: dev sunucusunun adresi. `REWLOY_API_KEY`: **yalnız test
+  anahtarı** (`rwk_test_…`); başka anahtar reddedilir.
+- `REWLOY_SESSION` (isteğe bağlı): test işletmesinin ekip oturumu (`rws_…`).
+  Test sıfırlama bir anahtarı kabul etmez (`403 CREDENTIAL_NOT_ALLOWED`); oturum
+  verilirse takım sonunda `ResetTestEnvironmentAsync` çağırır ve işletmeyi
+  temiz bırakır. Verilmezse reddin kendisini sınar, sildiğini elle siler.
+- Başlamadan `GET /v1/meta` okunur: `environment` `dev` değilse (ya da alan
+  yoksa) takım **çalışmaz**. Canlıya karşı asla çalışmaz.
+- Kapsadığı alanlar: meta ve işletme, rate-limit başlıkları, programlar (damga ve
+  hediye kartı), kartlar (ver, getir, kasa görünümü), satış (`RecordSale`),
+  `PassAction`, işlem listesi ve geri alma, müşteri arama, sayfalama, kodlar
+  (oluştur, listele, `SendBatchLink` ret durumları), webhook'lar (oluştur,
+  listele, sırrı yenile, sil), idempotency, hata nesneleri, test sıfırlama.
+  Sonda alan başına geçen/kalan sayısı yazılır; herhangi bir hatada çıkış kodu
+  sıfır değildir.
+- Sıfırlama bir işletme için günde en fazla 5 kez çalışır (`429 RATE_LIMITED`).
+- Kapsam dışı (0.3.0'da yeniden üretimle): bkz. `tests/Rewloy.Tests/Live/TODO.md`.
 
 ## Belgeler
 
@@ -924,6 +954,36 @@ dotnet test                                    # no network: the API is a stub H
 dotnet test -p:RewloyAsset=netstandard2.0      # the same tests on the netstandard2.0 build
 dotnet run --project tools/Rewloy.Generator    # regenerate from the live document
 ```
+
+### Live tests
+
+A separate suite runs the library end to end against a real Rewloy **dev
+server** (`tests/Rewloy.Tests/Live`, trait `Category=Live`); a release
+candidate is tested there before it goes live. It is **skipped** (not failed)
+when the environment is not set, so the ordinary `dotnet test` is unchanged.
+
+```sh
+REWLOY_BASE_URL=https://your-dev-server REWLOY_API_KEY=rwk_test_… \
+  dotnet test tests/Rewloy.Tests -f net10.0 --filter Category=Live --logger "console;verbosity=detailed"
+```
+
+- `REWLOY_BASE_URL`: the dev server. `REWLOY_API_KEY`: a **test key only**
+  (`rwk_test_…`); any other key is refused.
+- `REWLOY_SESSION` (optional): a team session (`rws_…`) of the test business.
+  The test reset does not accept an API key (`403 CREDENTIAL_NOT_ALLOWED`); with
+  a session the suite ends with `ResetTestEnvironmentAsync` and leaves the
+  business clean. Without it the suite checks that refusal and removes what it
+  can by hand.
+- It first reads `GET /v1/meta` and **refuses to run** unless `environment` is
+  `dev` (a missing field counts as not dev). It never runs against live.
+- Areas: meta and business, rate-limit headers, programs (stamp and gift card),
+  passes (issue, get, till view), `RecordSale`, `PassAction`, the operations
+  list and reversals, customer search, pagination, codes (create, list,
+  `SendBatchLink` refusals), webhooks (create, list, rotate secret, delete),
+  idempotency, error objects, test reset. It prints passed/failed per area and
+  exits non-zero on any failure.
+- The reset runs at most 5 times a day per business (`429 RATE_LIMITED`).
+- Out of scope until the 0.3.0 regeneration: `tests/Rewloy.Tests/Live/TODO.md`.
 
 ### Security and licence
 
