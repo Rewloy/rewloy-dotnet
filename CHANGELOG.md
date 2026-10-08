@@ -7,7 +7,7 @@ This library's releases. The API's own changes are listed at the link above.
 
 ## 0.3.0 (2026-10-07)
 
-Rewloy API 1.3.0'ı izler (API sürümü, `info.version`): 298 işlem (0.2.4'te
+Rewloy API 1.3.2'yi izler (API sürümü, `info.version`): 298 işlem (0.2.4'te
 260), hiçbiri kaldırılmadı. Kazanım kuralları (ürün grupları, kurallar,
 önizleme), fiş satırlarıyla satış ve satır iadesi, şube QR'ı (herkese açık şube
 sayfası, QR görüntüsü ve afişi, QR listesi), şube dondurma ve `LOCATION_FROZEN` /
@@ -15,10 +15,15 @@ sayfası, QR görüntüsü ve afişi, QR listesi), şube dondurma ve `LOCATION_F
 yeni webhook olayları (`pass.extended`, `location.frozen`, `location.unfrozen`,
 `business.paused`, `business.resumed`). Beş kütüphane 0.3.0'da aynı sürüme gelir.
 
-Follows Rewloy API 1.3.0 (the product version in `info.version`): 298
+Follows Rewloy API 1.3.2 (core v1.3.2) (the product version in `info.version`): 298
 operations (260 in 0.2.4), none removed. All five client libraries are 0.3.0.
 Additive: every 0.2.4 call keeps compiling and doing the same; the only change
 a caller can notice is listed under "Compatibility" below.
+
+1.3.0 to 1.3.2 changed no operation: six console-only error codes joined
+`ErrorCode` (`DPA_DRAFT`, `SUMMARY_REQUIRED`, `PREVIEW_CHANGED`, `DAY_CHANGED`,
+`NOTHING_TO_SEND`, `NOTICE_TOO_LATE`; `/v1` never returns them) and the
+`SignupAsync` description changed.
 
 - **Earn rules (new operations).** Product groups of the business:
   `ListEarnGroupsAsync`, `CreateEarnGroupAsync`, `GetEarnGroupAsync`,

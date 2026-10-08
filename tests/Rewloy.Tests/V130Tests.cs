@@ -21,7 +21,7 @@ namespace Rewloy.Tests
         [Fact]
         public void Knows_the_new_operations_and_the_api_version()
         {
-            Assert.Equal("1.3.0", RewloyOperations.ApiVersion);
+            Assert.Equal("1.3.2", RewloyOperations.ApiVersion);
             Assert.Equal(298, RewloyOperations.All.Count);
             foreach (var id in new[]
             {

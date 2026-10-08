@@ -1,6 +1,6 @@
 # Live suite: not covered yet
 
-The suite follows library 0.3.0 / API 1.3.0. Receipt lines with an earn rule set,
+The suite follows library 0.3.0 / API 1.3.2. Receipt lines with an earn rule set,
 `PreviewEarnAsync` / `PreviewSaleAsync`, the earn explanation, a line refund, the
 branch QR (public page and the downloads), `CopyProgramAsync` and the typed
 `Environment` of `GET /v1/meta` are covered. Not covered, and why:

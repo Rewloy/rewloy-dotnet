@@ -4,7 +4,7 @@ English: [below](#english).
 
 **Rewloy API'nin resmî .NET (C#) kütüphanesi.**
 
-> **Durum: önizleme (0.x), 0.2.3'ten beri nuget.org'da; 0.3.0 Rewloy API 1.3.0'ı izler. API kararlı; kütüphane arayüzü 1.0'a kadar değişebilir.**
+> **Durum: önizleme (0.x), 0.2.3'ten beri nuget.org'da; 0.3.0 Rewloy API 1.3.2'yi izler. API kararlı; kütüphane arayüzü 1.0'a kadar değişebilir.**
 
 [Rewloy](https://rewloy.com), işletmelerin dijital sadakat kartlarını
 müşterinin telefonuna koyar. Kart türleri damga, puan, VIP, cashback, hediye
